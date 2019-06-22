@@ -1,12 +1,12 @@
-use super::Features;
+use super::Vector;
 use num_traits::Float;
 use std::fmt::Debug;
 
 #[derive(Debug, Clone)]
-pub struct LogisticRegression<T: Float + 'static> {
+pub struct LogisticRegression<T: Float + Default + 'static> {
     step_start: T,
     gradient_cap: T,
-    weights: Features<'static, T>,
+    weights: Vector<T>,
 }
 
 impl LogisticRegression<f64> {
@@ -14,13 +14,13 @@ impl LogisticRegression<f64> {
         LogisticRegression {
             step_start: 0.5,
             gradient_cap: 0.1,
-            weights: Features::new(),
+            weights: Vector::new(),
         }
     }
 }
 
-impl<T: Float + Debug + 'static> LogisticRegression<T> {
-    pub fn train(&mut self, examples: &[(Features<'_, T>, T)]) {
+impl<T: Float + Default + Debug + 'static> LogisticRegression<T> {
+    pub fn train(&mut self, examples: &[(Vector<T>, T)]) {
         let mut step = self.step_start;
         let mut gradient = loss_gradient(examples, &self.weights);
         let mut magnitude = gradient.magnitude();
@@ -49,7 +49,7 @@ impl<T: Float + Debug + 'static> LogisticRegression<T> {
 
     pub fn predict<'o>(
         &'o self,
-        examples: impl Iterator<Item=&'o Features<'o, T>> + 'o,
+        examples: impl Iterator<Item=&'o Vector<T>> + 'o,
     ) -> impl Iterator<Item=T> + 'o {
         examples.map(move |example| sigmoid(example.dot(&self.weights)))
     }
@@ -59,14 +59,14 @@ fn adjusted_step<T: Float>(prev: T, _slope: T) -> T {
     prev / (T::one() + T::one())
 }
 
-fn new_weight_step<'c, T: Float>(
-    weights: &'c Features<'c, T>,
-    gradient: &'c Features<'c, T>,
+fn new_weight_step<'c, T: Float + Default>(
+    weights: &'c Vector<T>,
+    gradient: &'c Vector<T>,
     step: T,
-) -> Features<'c, T> {
+) -> Vector<T> {
     weights
         .zip(gradient)
-        .map(|(name, weight, gradient)| (name, weight - gradient * step))
+        .map(|(_, weight, gradient)| weight - gradient * step)
         .collect()
 }
 
@@ -79,9 +79,9 @@ fn new_weight_step<'c, T: Float>(
 /// logistic models, a number between 0 and 1); if the actual value is true,
 /// then the loss is `-ln(pred)`, where `pred` is the prediction.  These are
 /// all summed together to calculate the total loss on all of the examples.
-pub fn loss<T: Float + Debug + 'static>(
-    examples: &[(Features<'_, T>, T)],
-    weights: &Features<'_, T>,
+pub fn loss<T: Float + Default + Debug + 'static>(
+    examples: &[(Vector<T>, T)],
+    weights: &Vector<T>,
 ) -> T {
     let sum = examples
         .iter()
@@ -104,25 +104,23 @@ pub fn loss<T: Float + Debug + 'static>(
 /// derivative of the loss function against each of the weights, summing them,
 /// and outputting the result.  This **should not** take the place of weights -
 /// this is only one step in the process of gradient descent.
-pub fn loss_gradient<'e, 'l: 'e, T: Float + 'static>(
-    examples: &'l [(Features<'e, T>, T)],
-    weights: &Features<'_, T>,
-) -> Features<'e, T> {
-    let mut list = Features::<T>::new();
-    let inner = list.inner_mut();
+pub fn loss_gradient<'e, 'l: 'e, T: Float + Default + 'static>(
+    examples: &'l [(Vector<T>, T)],
+    weights: &Vector<T>,
+) -> Vector<T> {
+    let mut list = Vector::new();
     examples
         .iter()
         .flat_map(|(example, target)| {
             let delta = sigmoid(example.dot(weights)) - *target;
             example
                 .iter()
-                .map(move |(name, value)| (name, delta * value))
+                .enumerate()
+                .map(move |(idx, value)| (idx, delta * *value))
         })
-        .for_each(|(name, gradient)| {
-            inner
-                .entry(name.into())
-                .and_modify(|content| *content = *content + gradient)
-                .or_insert(gradient);
+        .for_each(|(idx, gradient)| {
+            let value = list.get(idx);
+            list.set(idx, value + gradient);
         });
 
     list
