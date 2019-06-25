@@ -1,62 +1,89 @@
 use super::Vector;
 use num_traits::Float;
 use std::fmt::Debug;
+use std::mem::swap;
 
 #[derive(Debug, Clone)]
 pub struct LogisticRegression<T: Float + Default + 'static> {
-    step_start: T,
+    initial_learning_rate: T,
+    learning_rate: T,
     gradient_cap: T,
+    loss: T,
+    regularization: Option<(T, T)>,
+    previous: Option<(Vector<T>, Vector<T>)>,
     weights: Vector<T>,
+    gradients: Vector<T>,
 }
 
 impl LogisticRegression<f64> {
     pub fn new() -> LogisticRegression<f64> {
         LogisticRegression {
-            step_start: 0.5,
+            initial_learning_rate: 0.5,
+            learning_rate: 0.5,
             gradient_cap: 0.1,
-            weights: Vector::new(),
+            loss: f64::infinity(),
+            regularization: None,
+            previous: None,
+            weights: Vector::empty(),
+            gradients: Vector::empty(),
         }
     }
 }
 
 impl<T: Float + Default + Debug + 'static> LogisticRegression<T> {
+    pub fn fit(&mut self, examples: &[(Vector<T>, T)]) {
+        let weights = new_weight_step(&self.weights, &self.gradients, self.learning_rate);
+        let new_loss = loss(examples, &weights, self.regularization);
+
+        if new_loss > self.loss {
+            self.learning_rate =  self.learning_rate / (T::one() + T::one());
+            self.fit(examples);
+        } else {
+            let mut new_weights = weights;
+            let mut new_gradients = loss_gradient(examples, &new_weights, self.regularization);
+            swap(&mut self.weights, &mut new_weights);
+            swap(&mut self.gradients, &mut new_gradients);
+            self.previous = Some((new_weights, new_gradients));
+            self.loss = loss(examples, &self.weights, self.regularization);
+        }
+    }
+
     pub fn train(&mut self, examples: &[(Vector<T>, T)]) {
-        let mut step = self.step_start;
-        let mut gradient = loss_gradient(examples, &self.weights);
-        let mut magnitude = gradient.magnitude();
+        self.gradients = loss_gradient(examples, &self.weights, self.regularization);
+        self.loss = loss(examples, &self.weights, self.regularization);
 
-        let mut current_loss = loss(examples, &self.weights);
-
-        while magnitude > self.gradient_cap {
-            let mut new_weights = new_weight_step(&self.weights, &gradient, step);
-            let mut new_loss = loss(examples, &new_weights);
-            while (current_loss - new_loss) < T::zero() {
-                step = adjusted_step(step, magnitude);
-                new_weights = new_weight_step(&self.weights, &gradient, step);
-                new_loss = loss(examples, &new_weights);
-            }
-
-            //            step = self.step_start;
-            step = step + step;
-            self.weights = new_weights.to_owned();
-            current_loss = loss(examples, &self.weights);
-            gradient = loss_gradient(examples, &self.weights);
-            magnitude = gradient.magnitude();
-
-            dbg!(magnitude);
+        while self.gradients.magnitude() > self.gradient_cap {
+            self.adjust_learning_rate();
+            self.fit(examples);
+            dbg!(self.gradients.magnitude());
         }
     }
 
     pub fn predict<'o>(
         &'o self,
-        examples: impl Iterator<Item=&'o Vector<T>> + 'o,
-    ) -> impl Iterator<Item=T> + 'o {
+        examples: impl Iterator<Item = &'o Vector<T>> + 'o,
+    ) -> impl Iterator<Item = T> + 'o {
         examples.map(move |example| sigmoid(example.dot(&self.weights)))
     }
-}
 
-fn adjusted_step<T: Float>(prev: T, _slope: T) -> T {
-    prev / (T::one() + T::one())
+    fn adjust_learning_rate(&mut self) {
+        match self.previous.as_ref() {
+            None => {
+                self.learning_rate = self.initial_learning_rate;
+            }
+            Some((pw, pg)) => {
+                let gs = self.gradients.combine(pg).map(|(c, p)| c - p).collect::<Vector<_>>();
+                let gw = self.weights.combine(pw).map(|(c, p)| c - p).collect::<Vector<_>>();
+
+                let gs_dot = gs.dot(&gs);
+                if gs_dot.is_zero() {
+                    self.learning_rate = self.initial_learning_rate;
+                } else {
+                    self.learning_rate = gw.dot(&gs).abs() / gs_dot
+                }
+            }
+        }
+    }
 }
 
 fn new_weight_step<'c, T: Float + Default>(
@@ -65,8 +92,8 @@ fn new_weight_step<'c, T: Float + Default>(
     step: T,
 ) -> Vector<T> {
     weights
-        .zip(gradient)
-        .map(|(_, weight, gradient)| weight - gradient * step)
+        .combine(gradient)
+        .map(|(weight, gradient)| weight - gradient * step)
         .collect()
 }
 
@@ -82,6 +109,7 @@ fn new_weight_step<'c, T: Float + Default>(
 pub fn loss<T: Float + Default + Debug + 'static>(
     examples: &[(Vector<T>, T)],
     weights: &Vector<T>,
+    regularization: Option<(T, T)>,
 ) -> T {
     let sum = examples
         .iter()
@@ -96,7 +124,18 @@ pub fn loss<T: Float + Default + Debug + 'static>(
             }
         })
         .fold(T::zero(), T::add);
-    (T::one().neg() / T::from(examples.len()).unwrap()) * sum
+    let base = (T::one().neg() / T::from(examples.len()).unwrap()) * sum;
+    let reg = match regularization {
+        None => T::zero(),
+        Some((l1, l2)) => {
+            let l1_loss = weights.iter().cloned().map(T::abs).fold(T::zero(), T::add);
+            let l2_loss = weights.iter().map(|v| v.powi(2)).fold(T::zero(), T::add);
+
+            l1 * l1_loss + l2 * l2_loss
+        }
+    };
+
+    base + reg
 }
 
 /// This calculates the loss gradient of a set of examples (with their targets)
@@ -107,21 +146,31 @@ pub fn loss<T: Float + Default + Debug + 'static>(
 pub fn loss_gradient<'e, 'l: 'e, T: Float + Default + 'static>(
     examples: &'l [(Vector<T>, T)],
     weights: &Vector<T>,
+    regularization: Option<(T, T)>,
 ) -> Vector<T> {
-    let mut list = Vector::new();
-    examples
-        .iter()
-        .flat_map(|(example, target)| {
-            let delta = sigmoid(example.dot(weights)) - *target;
-            example
-                .iter()
-                .enumerate()
-                .map(move |(idx, value)| (idx, delta * *value))
-        })
-        .for_each(|(idx, gradient)| {
-            let value = list.get(idx);
-            list.set(idx, value + gradient);
-        });
+    let examples_len = T::from(examples.len()).unwrap();
+    let mut list = Vector::empty();
+
+    for (example, target) in examples {
+        let delta = sigmoid(example.dot(weights)) - *target;
+        list.resize_to(example.len() - 1);
+        for (el, v) in list.iter_mut().zip(example.iter()) {
+            *el = *el + (delta * *v) / examples_len;
+        }
+    }
+
+    match regularization {
+        None => {},
+        Some((l1, l2)) => {
+            let two = T::one() + T::one();
+            for (el, w) in list.iter_mut().zip(weights.iter()) {
+                let l1_mod = two * l1 * w.signum();
+                let l2_mod = two * l2 * *w;
+
+                *el = *el + l1_mod + l2_mod;
+            }
+        }
+    }
 
     list
 }

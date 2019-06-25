@@ -4,12 +4,11 @@ use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::iter::from_fn;
 use std::rc::Rc;
-use std::vec::IntoIter;
 
 fn positive_counts<'r, T: Float + Debug>(
     ytrue: &'r [T],
     yhat: &'r [T],
-) -> impl Iterator<Item=(T, T)> {
+) -> impl Iterator<Item = (T, T)> {
     let mut pairs = yhat
         .iter()
         .cloned()
@@ -52,7 +51,7 @@ fn trapezoidal_area<T: Float>((x1, y1): (T, T), (x2, y2): (T, T)) -> T {
     (x1 - x2).abs() * ((y1 + y2) / (T::one() + T::one()))
 }
 
-fn trapezoidal<T: Float + Debug + Default>(xy: impl Iterator<Item=(T, T)>) -> T {
+fn trapezoidal<T: Float + Debug + Default>(xy: impl Iterator<Item = (T, T)>) -> T {
     let init = (T::zero(), (T::zero(), T::zero()));
     let (integral, (x, y)) = xy.fold(init, |(integral, prev), cur| {
         let integral = integral + trapezoidal_area(cur, prev);
