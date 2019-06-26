@@ -1,14 +1,10 @@
 use num_traits::Float;
 use std::cell::Cell;
 use std::cmp::Ordering;
-use std::fmt::Debug;
 use std::iter::from_fn;
 use std::rc::Rc;
 
-fn positive_counts<'r, T: Float + Debug>(
-    ytrue: &'r [T],
-    yhat: &'r [T],
-) -> impl Iterator<Item = (T, T)> {
+fn positive_counts<'r, T: Float>(ytrue: &'r [T], yhat: &'r [T]) -> impl Iterator<Item = (T, T)> {
     let mut pairs = yhat
         .iter()
         .cloned()
@@ -51,7 +47,7 @@ fn trapezoidal_area<T: Float>((x1, y1): (T, T), (x2, y2): (T, T)) -> T {
     (x1 - x2).abs() * ((y1 + y2) / (T::one() + T::one()))
 }
 
-fn trapezoidal<T: Float + Debug + Default>(xy: impl Iterator<Item = (T, T)>) -> T {
+fn trapezoidal<T: Float + Default>(xy: impl Iterator<Item = (T, T)>) -> T {
     let init = (T::zero(), (T::zero(), T::zero()));
     let (integral, (x, y)) = xy.fold(init, |(integral, prev), cur| {
         let integral = integral + trapezoidal_area(cur, prev);
@@ -61,7 +57,7 @@ fn trapezoidal<T: Float + Debug + Default>(xy: impl Iterator<Item = (T, T)>) -> 
     integral / (x * y)
 }
 
-pub fn roc_auc_score<T: Float + Debug + Default>(ytrue: &[T], yhat: &[T]) -> T {
+pub fn roc_auc_score<T: Float + Default>(ytrue: &[T], yhat: &[T]) -> T {
     trapezoidal(positive_counts(ytrue, yhat))
 }
 

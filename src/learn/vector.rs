@@ -130,13 +130,23 @@ pub fn combine<T: Default, I: Iterator<Item = T>, OT: Default, OI: Iterator<Item
     IterCombine(this, other)
 }
 
-pub fn combine4<T1, I1, T2, I2, T3, I3, T4, I4>(a: I1, b: I2, c: I3, d: I4) -> impl Iterator<Item=(T1, T2, T3, T4)>
-where T1: Default, T2: Default, T3: Default, T4: Default,
-    I1: Iterator<Item = T1>, I2: Iterator<Item = T2>, I3: Iterator<Item = T3>, I4: Iterator<Item
-= T4> {
-    combine(combine(combine(a, b), c), d).map(|(((a, b), c), d)| {
-        (a, b, c, d)
-    })
+pub fn combine4<T1, I1, T2, I2, T3, I3, T4, I4>(
+    a: I1,
+    b: I2,
+    c: I3,
+    d: I4,
+) -> impl Iterator<Item = (T1, T2, T3, T4)>
+where
+    T1: Default,
+    T2: Default,
+    T3: Default,
+    T4: Default,
+    I1: Iterator<Item = T1>,
+    I2: Iterator<Item = T2>,
+    I3: Iterator<Item = T3>,
+    I4: Iterator<Item = T4>,
+{
+    combine(combine(combine(a, b), c), d).map(|(((a, b), c), d)| (a, b, c, d))
 }
 
 struct IterCombine<T: Default, OT: Default, I: Iterator<Item = T>, OI: Iterator<Item = OT>>(I, OI);

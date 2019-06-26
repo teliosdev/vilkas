@@ -9,3 +9,24 @@ edition = "2018"
 [dependencies]
 num-traits = "0.2.8"
 rand = "0.6.5"
+crossbeam = "0.7.1"
+rouille = "3.0.0"
+futures = "0.1.27"
+failure = "0.1.5"
+redis = "0.10.0"
+bincode = "1.1.4"
+r2d2 = "0.8.5"
+r2d2_redis = "0.9.0"
+
+[dependencies.config]
+version = "0.9.3"
+default-features = false
+features = ["toml"]
+
+[dependencies.uuid]
+version = "0.7.4"
+features = ["serde"]
+
+[dependencies.serde]
+version = "1.0"
+features = ["derive"]

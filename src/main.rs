@@ -1,9 +1,13 @@
-use crate::learn::logistic::LogisticRegression;
+#[macro_use]
+extern crate serde;
+
 use crate::learn::metrics::roc_auc_score;
-use crate::learn::Vector;
+use crate::learn::{logistic, Algorithm, Vector};
 use rand::Rng;
 
+pub mod http;
 pub mod learn;
+pub mod storage;
 
 fn main() {
     const TOP: usize = 1000;
@@ -24,7 +28,7 @@ fn main() {
         .collect::<Vec<_>>();
     println!("done generating data.");
 
-    let mut log = LogisticRegression::new();
+    let mut log = logistic::Parameters::new().gradient_cap(0.1).build();
 
     println!("training...");
     log.train(&data_set[..]);
