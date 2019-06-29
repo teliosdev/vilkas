@@ -1,14 +1,14 @@
 use config::Config;
 
 mod items;
-pub mod redis;
+mod spike;
 
 use self::sealed::Sealed;
-use crate::storage::items::ItemStorage;
+use self::items::ItemStorage;
 
 pub trait Storage: ItemStorage + Sealed {}
 
-pub type DefaultStorage = redis::RedisStorage;
+pub type DefaultStorage = spike::SpikeStorage;
 
 mod sealed {
     pub(super) trait Sealed {}

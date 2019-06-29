@@ -1,5 +1,11 @@
+#![warn(clippy::all)]
+
 #[macro_use]
 extern crate serde;
+
+// #[cfg(feature = "aerospike")]
+#[macro_use]
+extern crate aerospike;
 
 use crate::learn::metrics::roc_auc_score;
 use crate::learn::{logistic, Algorithm, Vector};
