@@ -1,15 +1,16 @@
-use config::Config;
+use self::sealed::Sealed;
 
 mod items;
 mod spike;
 
-use self::sealed::Sealed;
-use self::items::ItemStorage;
+pub use self::items::{Item, ItemList, ItemStorage, TimeScope};
 
-pub trait Storage: ItemStorage + Sealed {}
+pub trait UserStorage: Sealed {}
+
+pub trait Storage: ItemStorage + UserStorage + Sealed {}
 
 pub type DefaultStorage = spike::SpikeStorage;
 
 mod sealed {
-    pub(super) trait Sealed {}
+    pub trait Sealed {}
 }

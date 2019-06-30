@@ -1,6 +1,5 @@
 use super::Vector;
 use crate::learn::Algorithm;
-use num_traits::real::Real;
 use num_traits::Float;
 use std::mem::swap;
 
@@ -12,8 +11,8 @@ pub struct Parameters<T: Float + Default + 'static> {
     regularization: Option<(T, T)>,
 }
 
-impl<T: Float + Default + 'static> Parameters<T> {
-    pub fn new() -> Parameters<T> {
+impl<T: Float + Default + 'static> Default for Parameters<T> {
+    fn default() -> Parameters<T> {
         Parameters {
             learning_rate: T::one(),
             gradient_cap: T::one(),
@@ -21,7 +20,9 @@ impl<T: Float + Default + 'static> Parameters<T> {
             regularization: None,
         }
     }
+}
 
+impl<T: Float + Default + 'static> Parameters<T> {
     pub fn learning_rate(self, learning_rate: T) -> Self {
         Parameters {
             learning_rate,
@@ -250,7 +251,7 @@ fn loss<T: Float + Default + 'static>(
 /// derivative of the loss function against each of the weights, summing them,
 /// and outputting the result.  This **should not** take the place of weights -
 /// this is only one step in the process of gradient descent.
-fn loss_gradient<'e, 'l: 'e, T: Float + Default + 'static>(
+fn loss_gradient<'l, T: Float + Default + 'static>(
     examples: &'l [(Vector<T>, T)],
     weights: &Vector<T>,
     regularization: Option<(T, T)>,

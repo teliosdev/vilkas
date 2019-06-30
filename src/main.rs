@@ -3,6 +3,9 @@
 #[macro_use]
 extern crate serde;
 
+#[macro_use]
+extern crate rouille;
+
 // #[cfg(feature = "aerospike")]
 #[macro_use]
 extern crate aerospike;
@@ -19,22 +22,20 @@ fn main() {
     const TOP: usize = 1000;
     let mut r = ::rand::thread_rng();
     let data_set: Vec<(Vector<f64>, f64)> = (0..TOP)
-        .into_iter()
         .map(move |i| {
             let positive = i % 2 == 0;
             let associated = r.gen_bool(0.80);
             let associated = if positive { associated } else { !associated };
             let features = (0..5)
-                .into_iter()
-                .map(|_| r.gen_range(0u32, 10u32) as f64)
-                .chain(Some(associated as u32 as f64).into_iter())
+                .map(|_| f64::from(r.gen_range(0u32, 10u32)))
+                .chain(Some(f64::from(u32::from(associated))).into_iter())
                 .collect::<Vector<f64>>();
-            (features, positive as u32 as f64)
+            (features, f64::from(u32::from(positive)))
         })
         .collect::<Vec<_>>();
     println!("done generating data.");
 
-    let mut log = logistic::Parameters::new().gradient_cap(0.1).build();
+    let mut log = logistic::Parameters::default().gradient_cap(0.1).build();
 
     println!("training...");
     log.train(&data_set[..]);

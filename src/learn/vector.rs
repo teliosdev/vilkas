@@ -32,9 +32,7 @@ impl<T: Float + Default> Vector<T> {
         other: &'b Vector<O>,
     ) -> impl Iterator<Item = (T, O)> + 'b {
         let max = self.len().max(other.len());
-        (0..max)
-            .into_iter()
-            .map(move |idx| (self.element(idx), other.element(idx)))
+        (0..max).map(move |idx| (self.element(idx), other.element(idx)))
     }
 
     /// Calculates the dot product of this vector with another vector.

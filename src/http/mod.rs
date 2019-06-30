@@ -4,7 +4,7 @@ use rouille::{router, start_server, Response};
 
 mod api;
 
-pub fn run(config: &Config) -> ! {
+pub fn run(config: Config) -> ! {
     let addr = config
         .get_str("http.addr")
         .unwrap_or_else(|_| "0.0.0.0:3000".into());
@@ -13,23 +13,21 @@ pub fn run(config: &Config) -> ! {
     start_server(addr, move |request| {
         router!(request,
             (POST)["/api/recommend"] => {
-                api::recommend::apply(request, &context).into()
+                api::recommend::apply(request, &context)
             },
             _ => { Response::empty_404() }
         )
     })
 }
 
-pub struct Context<'c> {
-    config: &'c Config,
+pub struct Context {
+    config: Config,
     storage: DefaultStorage,
 }
 
-impl<'c> Context<'c> {
-    pub fn load(config: &'c Config) -> Context<'c> {
-        Context {
-            config,
-            storage: DefaultStorage::load(config),
-        }
+impl Context {
+    pub fn load(config: Config) -> Context {
+        let storage = DefaultStorage::load(&config);
+        Context { config, storage }
     }
 }
