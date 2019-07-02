@@ -1,8 +1,9 @@
+use std::collections::HashMap;
+
 use aerospike::errors::{Error as AerospikeError, ErrorKind as AerospikeErrorKind};
 use aerospike::{FloatValue, Record, ResultCode, Value};
 use failure::Error;
 use serde::Deserialize;
-use std::collections::HashMap;
 
 pub(super) trait ResultExt<T> {
     fn optional(self) -> Result<Option<T>, AerospikeError>;
@@ -20,6 +21,7 @@ impl<T> ResultExt<T> for Result<T, AerospikeError> {
         }
     }
 }
+
 pub(super) trait ValueExt {
     fn as_str(&self) -> Option<&str>;
     fn as_u64(&self) -> Option<u64>;

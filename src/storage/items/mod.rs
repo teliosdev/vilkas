@@ -1,21 +1,22 @@
-use crate::storage::Sealed;
-use failure::Error;
 use std::collections::{HashMap, HashSet};
+
+use failure::Error;
 use uuid::Uuid;
 
-mod decay;
-mod scope;
+use crate::storage::Sealed;
 
 pub use self::decay::{DecayFunction, ItemListDecay, NearListDecay};
 pub use self::scope::TimeScope;
 
+mod decay;
+mod scope;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Item {
-    id: Uuid,
-    part: String,
-    views: u64,
-    popularity: f64,
-    meta: HashMap<String, HashSet<String>>,
+    pub id: Uuid,
+    pub part: String,
+    pub views: u64,
+    pub meta: HashMap<String, HashSet<String>>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -26,7 +27,11 @@ pub struct ItemList {
 
 pub trait ItemStorage: Sealed {
     fn find_item(&self, part: &str, item: Uuid) -> Result<Option<Item>, Error>;
-    fn find_items<'i>(&self, part: &str, items: Box<dyn Iterator<Item = Uuid> + 'i>) -> Result<Vec<Option<Item>>, Error>;
+    fn find_items<'i>(
+        &self,
+        part: &str,
+        items: Box<dyn Iterator<Item = Uuid> + 'i>,
+    ) -> Result<Vec<Option<Item>>, Error>;
     fn find_items_near(&self, part: &str, item: Uuid) -> Result<ItemList, Error>;
     fn find_items_top(&self, part: &str, scope: TimeScope) -> Result<ItemList, Error>;
     fn find_items_popular(&self, part: &str, scope: TimeScope) -> Result<ItemList, Error>;

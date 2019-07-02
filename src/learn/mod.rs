@@ -1,10 +1,10 @@
-pub mod logistic;
-pub mod metrics;
-pub mod vector;
-
 use num_traits::Float;
 
 pub use self::vector::{combine, Vector};
+
+pub mod logistic;
+pub mod metrics;
+pub mod vector;
 
 pub trait Algorithm<T: Float + Default + 'static> {
     fn fit(&mut self, examples: &[(Vector<T>, T)]);

@@ -1,10 +1,11 @@
-use crate::http::Context;
-use crate::storage::{Item, ItemStorage, TimeScope};
 use failure::Error;
 use fallible_iterator::{convert, FallibleIterator};
-
 use rouille::{Request, Response};
 use uuid::Uuid;
+
+use crate::http::Context;
+use crate::storage::{Item, ItemStorage, TimeScope};
+
 pub fn apply(request: &Request, context: &Context) -> Response {
     let request: RecommendRequest = try_or_400!(rouille::input::json_input(request));
     unimplemented!()
@@ -102,12 +103,10 @@ where
                     }
                 }
 
-
                 Ok(Some(buf))
             }
             None => Ok(None),
         }
-
     }
 }
 
@@ -137,5 +136,4 @@ fn top_pop_list<'c>(
             .zip(pops)
             .flat_map(move |(a, b)| Ok(convert(a.into_iter().chain(b.into_iter()).map(Ok)))))
     })
-
 }

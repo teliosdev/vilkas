@@ -1,7 +1,10 @@
-use super::Vector;
-use crate::learn::Algorithm;
-use num_traits::Float;
 use std::mem::swap;
+
+use num_traits::Float;
+
+use crate::learn::Algorithm;
+
+use super::Vector;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Parameters<T: Float + Default + 'static> {

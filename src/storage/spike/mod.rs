@@ -1,78 +1,103 @@
-use self::ext::{RecordExt, ResultExt, ValueExt};
-use self::keys::Keys;
-use super::items::{Item, ItemList, ItemListDecay, NearListDecay, TimeScope};
-use super::{ItemStorage, Sealed, Storage, UserStorage};
+use std::collections::HashMap;
+
 use aerospike::errors::{Error as AerospikeError, ErrorKind as AerospikeErrorKind};
 use aerospike::{
-    BatchPolicy, BatchRead, Bin, Bins, Client, ClientPolicy, GenerationPolicy, Key, ReadPolicy,
-    Record, ResultCode, Value, WritePolicy,
+    BatchPolicy, BatchRead, Bin, Bins, Client, ClientPolicy, Expiration, GenerationPolicy, Key,
+    ReadPolicy, Record, ResultCode, Value, WritePolicy,
 };
 use byteorder::{ByteOrder, LittleEndian};
 use config::Config;
 use failure::{Error, SyncFailure};
-use std::collections::HashMap;
 use uuid::Uuid;
+
+use crate::storage::{FeatureList, UserData};
+
+use super::items::{Item, ItemList, ItemListDecay, NearListDecay, TimeScope};
+use super::{ItemStorage, ModelStorage, Sealed, Storage, UserStorage};
+
+use self::ext::{RecordExt, ResultExt, ValueExt};
+use self::keys::Keys;
+use crate::storage::models::Activity;
 
 mod ext;
 mod keys;
 
+mod item;
+mod user;
+
 pub struct SpikeStorage {
     client: Client,
     keys: Keys,
+    user_history_size: usize,
+    short_activity_lifetime: u32,
+    long_activity_lifetime: u32,
+    list_activity_lifetime: u32,
     near_decay: NearListDecay,
     top_decay: ItemListDecay,
     pop_decay: ItemListDecay,
 }
 
-impl SpikeStorage {
-    pub fn load(config: &Config) -> SpikeStorage {
-        let user_password = config.get("aerospike.login").ok().and_then(|v| v);
-        let thread_pool_size = config
-            .get("aerospike.thread_pool")
-            .expect("could not load aerospike thread pool count");
-        let use_services_alternate = config
-            .get_bool("aerospike.services_alternate")
-            .ok()
-            .unwrap_or(false);
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+struct SpikeStorageConfiguration {
+    aerospike_login: Option<(String, String)>,
+    aerospike_thread_pool: usize,
+    aerospike_services_alternate: bool,
+    aerospike_hosts: String,
+    keys: Keys,
+    near_decay: NearListDecay,
+    top_decay: ItemListDecay,
+    pop_decay: ItemListDecay,
+    user_history_size: usize,
+    short_activity_lifetime: u32,
+    long_activity_lifetime: u32,
+    list_activity_lifetime: u32,
+}
+
+impl Into<SpikeStorage> for SpikeStorageConfiguration {
+    fn into(self) -> SpikeStorage {
         let policy = ClientPolicy {
-            user_password,
-            thread_pool_size,
-            use_services_alternate,
-            ..ClientPolicy::default()
+            user_password: self.aerospike_login,
+            thread_pool_size: self.aerospike_thread_pool,
+            use_services_alternate: self.aerospike_services_alternate,
+            ..Default::default()
         };
-        let hosts = config
-            .get_str("aerospike.hosts")
-            .expect("could not load aerospike hosts");
-        let client = Client::new(&policy, &hosts).expect("could not connect to aerospike");
-        let keys: Keys = config
-            .get("aerospike.keys")
-            .expect("could not load aerospike key information");
-        let near_decay: NearListDecay = config.get("aerospike.near_decay").ok().unwrap_or_default();
-        let top_decay: ItemListDecay = config
-            .get("aerospike.top_decay")
-            .ok()
-            .unwrap_or_else(ItemListDecay::top_default);
-        let pop_decay: ItemListDecay = config
-            .get("aerospike.pop_decay")
-            .ok()
-            .unwrap_or_else(ItemListDecay::pop_default);
+        let client =
+            Client::new(&policy, &self.aerospike_hosts).expect("could not connect to aerospike");
 
         SpikeStorage {
             client,
-            keys,
-            near_decay,
-            top_decay,
-            pop_decay,
+            keys: self.keys,
+            user_history_size: self.user_history_size,
+            short_activity_lifetime: self.short_activity_lifetime,
+            long_activity_lifetime: self.long_activity_lifetime,
+            list_activity_lifetime: self.list_activity_lifetime,
+            near_decay: self.near_decay,
+            top_decay: self.top_decay,
+            pop_decay: self.pop_decay,
         }
+    }
+}
+
+impl SpikeStorage {
+    pub fn load(config: &Config) -> SpikeStorage {
+        let configuration = config
+            .get::<SpikeStorageConfiguration>("storage.aerospike")
+            .expect("could not load aerospike configuration");
+        configuration.into()
     }
 
     pub fn get(&self, key: &Key, bins: impl Into<Bins>) -> Result<Option<Record>, Error> {
-        self.client
-            .get(&ReadPolicy::default(), &key, bins)
-            .optional()
-            .map_err(SyncFailure::new)
-            .map_err(Error::from)
+        simple_get(&self.client, key, bins)
     }
+}
+
+fn simple_get(client: &Client, key: &Key, bins: impl Into<Bins>) -> Result<Option<Record>, Error> {
+    client
+        .get(&ReadPolicy::default(), &key, bins)
+        .optional()
+        .map_err(SyncFailure::new)
+        .map_err(Error::from)
 }
 
 struct DebugClient<'r>(&'r Client);
@@ -110,205 +135,79 @@ impl Sealed for SpikeStorage {}
 
 impl Storage for SpikeStorage {}
 
-impl UserStorage for SpikeStorage {}
-
-impl ItemStorage for SpikeStorage {
-    fn find_item(&self, part: &str, item: Uuid) -> Result<Option<Item>, Error> {
-        let key = self.keys.item_key(part, item);
-        self.get(&key, ["data"])?.deserialize_bin::<Item>("data")
+impl ModelStorage for SpikeStorage {
+    fn set_default_model(&self, list: FeatureList<'_>) -> Result<(), Error> {
+        let key = self.keys.default_model_key();
+        let bin = bincode::serialize(&list)?;
+        self.client
+            .put(&Default::default(), &key, &[Bin::new("data", bin.into())])
+            .map_err(SyncFailure::new)?;
+        Ok(())
     }
 
-    fn find_items<'i>(&self, part: &str, items: Box<dyn Iterator<Item = Uuid> + 'i>) -> Result<Vec<Option<Item>>, Error> {
-        let bins = Bins::Some(vec!["data".into()]);
-        let keys = items
-            .map(|key| self.keys.item_key(part, key))
-            .map(|key| BatchRead::new(key, &bins))
-            .collect();
-        let results = self
-            .client
-            .batch_get(&BatchPolicy::default(), keys)
-            .map_err(SyncFailure::new)?
-            .into_iter()
-            .map(|read| {
-                read.record
-                    .deserialize_bin::<Item>("data")
-                    .ok()
-                    .and_then(|v| v)
-            })
-            .collect();
-
-        Ok(results)
+    fn find_default_model(&self) -> Result<FeatureList<'static>, Error> {
+        let key = self.keys.default_model_key();
+        let list = self
+            .get(&key, ["data"])?
+            .deserialize_bin::<FeatureList<'static>>("data")?;
+        Ok(list.unwrap_or_default())
     }
 
-    fn find_items_near(&self, part: &str, item: Uuid) -> Result<ItemList, Error> {
-        let key = self.keys.item_near_key(part, item);
-        Ok(self
-            .get(&key, ["list", "nmods"])?
-            .as_ref()
-            .map(build_item_list)
-            .unwrap_or_default())
+    fn find_model(&self, part: &str) -> Result<Option<FeatureList<'static>>, Error> {
+        let key = self.keys.model_key(part);
+        self.get(&key, ["data"])?
+            .deserialize_bin::<FeatureList<'static>>("data")
     }
 
-    fn find_items_top(&self, part: &str, scope: TimeScope) -> Result<ItemList, Error> {
-        let key = self.keys.item_top_key(part, scope);
-        Ok(self
-            .get(&key, ["list", "nmods"])?
-            .as_ref()
-            .map(build_item_list)
-            .unwrap_or_default())
+    fn model_activity_save(&self, part: &str, activity: &Activity) -> Result<(), Error> {
+        let key = self.keys.activity_key(part, activity.id);
+        let data = bincode::serialize(activity)?;
+        self.client
+            .put(&Default::default(), &key, &[Bin::new("data", data.into())])
+            .map_err(SyncFailure::new)?;
+        Ok(())
     }
 
-    fn find_items_popular(&self, part: &str, scope: TimeScope) -> Result<ItemList, Error> {
-        let key = self.keys.item_pop_key(part, scope);
-        Ok(self
-            .get(&key, ["list", "nmods"])?
-            .as_ref()
-            .map(build_item_list)
-            .unwrap_or_default())
+    fn model_activity_load(&self, part: &str, id: Uuid) -> Result<Option<Activity>, Error> {
+        let key = self.keys.activity_key(part, id);
+        self.get(&key, ["data"])?
+            .deserialize_bin::<Activity>("data")
     }
 
-    fn items_add_near(&self, part: &str, item: Uuid, near: Uuid) -> Result<(), Error> {
-        let key = self.keys.item_near_key(part, item);
-        let nmods = increment_item_list_map(&self.client, &key, near, 1.0)?;
-        // If the number of modifications is not sufficient, nothing
-        // further needs to happen.
-        if nmods < self.near_decay.max_modifications {
+    fn model_activity_choose(&self, part: &str, id: Uuid, chosen: &[Uuid]) -> Result<(), Error> {
+        let key = self.keys.activity_key(part, id);
+        let record = self.get(&key, ["data"])?;
+        let data = record.deserialize_bin::<Activity>("data")?;
+        let mut data = if let Some(d) = data {
+            d
+        } else {
             return Ok(());
-        }
-        item_list_decay(&self, &key, |_, list| self.near_decay.decay(list))
-    }
+        };
 
-    fn items_view(&self, part: &str, item: Uuid, view_cost: f64) -> Result<(), Error> {
-        let top_keys = TimeScope::variants().map(|s| self.keys.item_top_key(part, s));
-        let pop_keys = TimeScope::variants().map(|s| self.keys.item_pop_key(part, s));
+        data.chosen = Some(chosen.to_owned());
+        let data = bincode::serialize(&data)?;
+        let bins = [Bin::new("data", data.into())];
 
-        for key in top_keys {
-            increment_item_list_map(&self.client, &key, item, 1.0)?;
-        }
-
-        for key in pop_keys {
-            increment_item_list_map(&self.client, &key, item, view_cost)?;
-        }
-
-        Ok(())
-    }
-
-    fn items_list_flush(&self, part: &str) -> Result<(), Error> {
-        let top_keys = TimeScope::variants().map(|s| (self.keys.item_top_key(part, s), s));
-        let pop_keys = TimeScope::variants().map(|s| (self.keys.item_pop_key(part, s), s));
-        let current = millis_epoch();
-        for (key, scope) in top_keys {
-            let record = self.get(&key, ["nmods"])?;
-            let nmods = record
-                .as_ref()
-                .and_then(|record| record.bins.get("nmods"))
-                .and_then(|v| v.as_u64())
-                .unwrap_or_default();
-            if nmods > self.top_decay.max_modifications {
-                item_list_decay(&self, &key, |epoch, list| {
-                    self.top_decay
-                        .decay(scope, current - epoch.unwrap_or(current - 360_000), list)
-                })?;
-            }
-        }
-
-        for (key, scope) in pop_keys {
-            let record = self.get(&key, ["nmods"])?;
-            let nmods = record
-                .as_ref()
-                .and_then(|record| record.bins.get("nmods"))
-                .and_then(|v| v.as_u64())
-                .unwrap_or_default();
-            if nmods > self.top_decay.max_modifications {
-                item_list_decay(&self, &key, |epoch, list| {
-                    self.pop_decay
-                        .decay(scope, current - epoch.unwrap_or(current - 360_000), list)
-                })?;
-            }
-        }
-
+        self.client
+            .put(&Default::default(), &key, &bins)
+            .map_err(SyncFailure::new)?;
         Ok(())
     }
 }
 
-fn millis_epoch() -> u128 {
-    std::time::UNIX_EPOCH.elapsed().unwrap().as_millis()
-}
-
-fn build_item_list(record: &Record) -> ItemList {
-    let items = record
-        .bins
-        .get("list")
-        .and_then(|list| list.as_hash())
-        .map(|list| {
-            list.iter()
-                .flat_map(|(key, value)| {
-                    let key = key.as_str().and_then(|k| k.parse::<Uuid>().ok());
-                    let value = value.as_f64();
-                    key.and_then(|k| value.map(|v| (k, v)))
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    let nmods = record
-        .bins
-        .get("nmods")
-        .and_then(|v| v.as_u64())
-        .unwrap_or_default();
-
-    ItemList { items, nmods }
-}
-
-fn increment_item_list_map(client: &Client, key: &Key, id: Uuid, by: f64) -> Result<u64, Error> {
-    // We'll have to do some weird stuff to get this to work.
-    // First, do our imports...
-    use aerospike::operations::{self as ops, MapPolicy};
-    // Now, we'll say to increment the value at the given key
-    // (our near item) in the list; this should create a key
-    // if it did not exist previously.
-    let map_policy_default = MapPolicy::default();
-    let map_key = id.to_string().into();
-    let one_value = by.into();
-    let incr = ops::maps::increment_value(&map_policy_default, "list", &map_key, &one_value);
-    // Then, we'll increment the nmods key...
-    let add_bin = Bin::new("nmods", Value::UInt(1));
-    let add = ops::add(&add_bin);
-    // and retrieve it, for use.
-    let get = ops::get_bin("nmods");
-    let op = [incr, add, get];
-
-    // The resulting "record" should contain the nmods bin,
-    // which should, at this point, be at least 1; but we'll
-    // handle it gracefully in case something funky happens.
-    let nmods = client
-        .operate(&WritePolicy::default(), &key, &op)
-        .map_err(SyncFailure::new)?
-        .bins
-        .get("nmods")
-        .and_then(|v| v.as_u64())
-        .unwrap_or_default();
-    Ok(nmods)
-}
-
-fn item_list_decay<F>(spike: &SpikeStorage, key: &Key, decay: F) -> Result<(), Error>
+fn read_modify_write<F>(
+    client: &Client,
+    key: &Key,
+    bins: impl Into<Bins>,
+    mut modify: F,
+) -> Result<(), Error>
 where
-    F: Fn(Option<u128>, &mut ItemList),
+    F: FnMut(&Option<Record>) -> Result<Vec<Bin>, Error>,
 {
-    // Otherwise, we'll first set the nmods count to zero, since
-    // we are flushing the list, and we'll recalculate the new
-    // values.
+    let bins = bins.into();
     loop {
-        let record = spike.get(&key, ["list", "nmods", "since"])?;
-        // Load the list from aerospike.
-        let mut list = record.as_ref().map(build_item_list).unwrap_or_default();
-        let epoch = record
-            .as_ref()
-            .and_then(|r| r.bins.get("since"))
-            .and_then(|v| v.as_blob())
-            .map(|v| LittleEndian::read_u128(&v[..]));
-        // Now, calculate the decays, as well as capping the list.
-        // self.near_decay.decay(&mut list);
-        decay(epoch, &mut list);
+        let record = simple_get(client, key, bins.clone())?;
+        let output = modify(&record)?;
         // We need to use our own write policy, because...
         let policy = WritePolicy {
             // We need to ensure that the generation we're writing
@@ -318,27 +217,11 @@ where
             // it's been written to before we've had a chance to
             // write to it.
             generation_policy: GenerationPolicy::ExpectGenEqual,
-            generation: record.map(|r| r.generation).unwrap_or(0),
+            generation: record.as_ref().map(|r| r.generation).unwrap_or(0),
             ..WritePolicy::default()
         };
-        // Now, collect the items into a proper hashmap for
-        // aerospike.  At the same time, we'll also reset the nmods
-        // counter to zero.
-        let items = list
-            .items
-            .into_iter()
-            .map(|(k, v)| (Value::from(k.to_string()), Value::from(v)))
-            .collect::<HashMap<_, _>>();
 
-        let mut epoch = vec![0u8; 16];
-        LittleEndian::write_u128(&mut epoch[..], millis_epoch());
-        let bins = [
-            Bin::new("list", items.into()),
-            Bin::new("nmods", 0.into()),
-            Bin::new("epoch", epoch.into()),
-        ];
-
-        match spike.client.put(&policy, &key, &bins) {
+        match client.put(&policy, &key, &output) {
             // We've successfully written.  Return.
             Ok(()) => {
                 return Ok(());
@@ -360,4 +243,25 @@ where
             }
         }
     }
+}
+
+fn push_activity_list(
+    client: &Client,
+    keys: (Key, Key),
+    part: &str,
+    id: Uuid,
+) -> Result<(), Error> {
+    use aerospike::operations as ops;
+
+    let value = id.to_string().into();
+    let push = ops::lists::append("list", &value);
+    let list = [push];
+
+    let _ = client
+        .operate(&WritePolicy::default(), &keys.0, &list)
+        .map_err(SyncFailure::new)?;
+    let _ = client
+        .operate(&WritePolicy::default(), &keys.1, &list)
+        .map_err(SyncFailure::new)?;
+    Ok(())
 }

@@ -1,6 +1,7 @@
-use crate::storage::DefaultStorage;
 use config::Config;
 use rouille::{router, start_server, Response};
+
+use crate::storage::DefaultStorage;
 
 mod api;
 

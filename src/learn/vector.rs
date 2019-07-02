@@ -1,6 +1,7 @@
-use num_traits::Float;
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
+
+use num_traits::Float;
 
 /// An encapsulated vector type.  This is interchangable with the
 /// standard library's vec; this only adds some behaviour on top

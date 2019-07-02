@@ -1,21 +1,21 @@
 #![warn(clippy::all)]
 
-#[macro_use]
-extern crate serde;
-
-#[macro_use]
-extern crate rouille;
-
 // #[cfg(feature = "aerospike")]
 #[macro_use]
 extern crate aerospike;
+#[macro_use]
+extern crate rouille;
+#[macro_use]
+extern crate serde;
+
+use rand::Rng;
 
 use crate::learn::metrics::roc_auc_score;
 use crate::learn::{logistic, Algorithm, Vector};
-use rand::Rng;
 
 pub mod http;
 pub mod learn;
+pub mod recommend;
 pub mod storage;
 
 fn main() {

@@ -1,8 +1,9 @@
-use num_traits::Float;
 use std::cell::Cell;
 use std::cmp::Ordering;
 use std::iter::from_fn;
 use std::rc::Rc;
+
+use num_traits::Float;
 
 fn positive_counts<'r, T: Float>(ytrue: &'r [T], yhat: &'r [T]) -> impl Iterator<Item = (T, T)> {
     let mut pairs = yhat
