@@ -1,9 +1,7 @@
 use crate::storage::spike::ext::{RecordExt, ValueExt};
 use crate::storage::spike::{read_modify_write, SpikeStorage};
 use crate::storage::{Item, ItemList, ItemStorage, TimeScope};
-use aerospike::{
-    BatchPolicy, BatchRead, Bin, Bins, Client, Key, ReadPolicy, Record, Value, WritePolicy,
-};
+use aerospike::{BatchPolicy, BatchRead, Bin, Bins, Client, Key, Record, Value, WritePolicy};
 use byteorder::{ByteOrder, LittleEndian};
 use failure::{Error, SyncFailure};
 use std::collections::HashMap;
@@ -106,10 +104,7 @@ impl ItemStorage for SpikeStorage {
                 .and_then(|v| v.as_u64())
                 .unwrap_or_default();
             if nmods > self.top_decay.max_modifications {
-                item_list_decay(&self, &key, |epoch, list| {
-                    self.top_decay
-                        .decay(scope, current - epoch.unwrap_or(current - 360_000), list)
-                })?;
+                item_list_decay(&self, &key, |epoch, list| self.top_decay.decay(scope, list))?;
             }
         }
 
@@ -121,19 +116,12 @@ impl ItemStorage for SpikeStorage {
                 .and_then(|v| v.as_u64())
                 .unwrap_or_default();
             if nmods > self.top_decay.max_modifications {
-                item_list_decay(&self, &key, |epoch, list| {
-                    self.pop_decay
-                        .decay(scope, current - epoch.unwrap_or(current - 360_000), list)
-                })?;
+                item_list_decay(&self, &key, |list| self.pop_decay.decay(scope, list))?;
             }
         }
 
         Ok(())
     }
-}
-
-fn millis_epoch() -> u128 {
-    std::time::UNIX_EPOCH.elapsed().unwrap().as_millis()
 }
 
 fn build_item_list(record: &Record) -> ItemList {
@@ -198,14 +186,9 @@ where
     read_modify_write(&spike.client, key, ["list", "nmods", "since"], |record| {
         // Load the list from aerospike.
         let mut list = record.as_ref().map(build_item_list).unwrap_or_default();
-        let epoch = record
-            .as_ref()
-            .and_then(|r| r.bins.get("since"))
-            .and_then(|v| v.as_blob())
-            .map(|v| LittleEndian::read_u128(&v[..]));
         // Now, calculate the decays, as well as capping the list.
         // self.near_decay.decay(&mut list);
-        decay(epoch, &mut list);
+        decay(&mut list);
         // Now, collect the items into a proper hashmap for
         // aerospike.  At the same time, we'll also reset the nmods
         // counter to zero.
@@ -215,12 +198,9 @@ where
             .map(|(k, v)| (Value::from(k.to_string()), Value::from(v)))
             .collect::<HashMap<_, _>>();
 
-        let mut epoch = vec![0u8; 16];
-        LittleEndian::write_u128(&mut epoch[..], millis_epoch());
         Ok(vec![
             Bin::new("list", items.into()),
             Bin::new("nmods", 0.into()),
-            Bin::new("epoch", epoch.into()),
         ])
     })
 }

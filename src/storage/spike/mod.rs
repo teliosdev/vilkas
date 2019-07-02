@@ -1,28 +1,19 @@
-use std::collections::HashMap;
-
+use self::ext::ResultExt;
+use self::keys::Keys;
+use super::items::{ItemListDecay, NearListDecay};
+use super::{ModelStorage, Sealed, Storage};
 use aerospike::errors::{Error as AerospikeError, ErrorKind as AerospikeErrorKind};
 use aerospike::{
-    BatchPolicy, BatchRead, Bin, Bins, Client, ClientPolicy, Expiration, GenerationPolicy, Key,
-    ReadPolicy, Record, ResultCode, Value, WritePolicy,
+    Bin, Bins, Client, ClientPolicy, GenerationPolicy, Key, ReadPolicy, Record, ResultCode,
+    WritePolicy,
 };
-use byteorder::{ByteOrder, LittleEndian};
 use config::Config;
 use failure::{Error, SyncFailure};
-use uuid::Uuid;
-
-use crate::storage::{FeatureList, UserData};
-
-use super::items::{Item, ItemList, ItemListDecay, NearListDecay, TimeScope};
-use super::{ItemStorage, ModelStorage, Sealed, Storage, UserStorage};
-
-use self::ext::{RecordExt, ResultExt, ValueExt};
-use self::keys::Keys;
-use crate::storage::models::Activity;
 
 mod ext;
-mod keys;
-
 mod item;
+mod keys;
+mod model;
 mod user;
 
 pub struct SpikeStorage {
@@ -40,18 +31,53 @@ pub struct SpikeStorage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 struct SpikeStorageConfiguration {
+    #[serde(default)]
     aerospike_login: Option<(String, String)>,
+    #[serde(default = "defaults::aerospike_thread_pool")]
     aerospike_thread_pool: usize,
+    #[serde(default = "defaults::aerospike_services_alternate")]
     aerospike_services_alternate: bool,
     aerospike_hosts: String,
+    #[serde(default)]
     keys: Keys,
+    #[serde(default)]
     near_decay: NearListDecay,
+    #[serde(default = "ItemListDecay::top_default")]
     top_decay: ItemListDecay,
+    #[serde(default = "ItemListDecay::pop_default")]
     pop_decay: ItemListDecay,
+    #[serde(default = "defaults::user_history_size")]
     user_history_size: usize,
+    #[serde(default = "defaults::short_activity_lifetime")]
     short_activity_lifetime: u32,
+    #[serde(default = "defaults::long_activity_lifetime")]
     long_activity_lifetime: u32,
+    #[serde(default = "defaults::list_activity_lifetime")]
     list_activity_lifetime: u32,
+}
+
+mod defaults {
+    pub const fn aerospike_thread_pool() -> usize {
+        16
+    }
+    pub const fn aerospike_services_alternate() -> bool {
+        false
+    }
+    pub const fn user_history_size() -> usize {
+        16
+    }
+    // ten minutes
+    pub const fn short_activity_lifetime() -> u32 {
+        60 * 10
+    }
+    // two hours
+    pub const fn long_activity_lifetime() -> u32 {
+        60 * 60 * 2
+    }
+    // ditto
+    pub const fn list_activity_lifetime() -> u32 {
+        60 * 60 * 2
+    }
 }
 
 impl Into<SpikeStorage> for SpikeStorageConfiguration {
@@ -92,14 +118,6 @@ impl SpikeStorage {
     }
 }
 
-fn simple_get(client: &Client, key: &Key, bins: impl Into<Bins>) -> Result<Option<Record>, Error> {
-    client
-        .get(&ReadPolicy::default(), &key, bins)
-        .optional()
-        .map_err(SyncFailure::new)
-        .map_err(Error::from)
-}
-
 struct DebugClient<'r>(&'r Client);
 
 impl<'r> std::fmt::Debug for DebugClient<'r> {
@@ -134,66 +152,6 @@ impl std::fmt::Debug for SpikeStorage {
 impl Sealed for SpikeStorage {}
 
 impl Storage for SpikeStorage {}
-
-impl ModelStorage for SpikeStorage {
-    fn set_default_model(&self, list: FeatureList<'_>) -> Result<(), Error> {
-        let key = self.keys.default_model_key();
-        let bin = bincode::serialize(&list)?;
-        self.client
-            .put(&Default::default(), &key, &[Bin::new("data", bin.into())])
-            .map_err(SyncFailure::new)?;
-        Ok(())
-    }
-
-    fn find_default_model(&self) -> Result<FeatureList<'static>, Error> {
-        let key = self.keys.default_model_key();
-        let list = self
-            .get(&key, ["data"])?
-            .deserialize_bin::<FeatureList<'static>>("data")?;
-        Ok(list.unwrap_or_default())
-    }
-
-    fn find_model(&self, part: &str) -> Result<Option<FeatureList<'static>>, Error> {
-        let key = self.keys.model_key(part);
-        self.get(&key, ["data"])?
-            .deserialize_bin::<FeatureList<'static>>("data")
-    }
-
-    fn model_activity_save(&self, part: &str, activity: &Activity) -> Result<(), Error> {
-        let key = self.keys.activity_key(part, activity.id);
-        let data = bincode::serialize(activity)?;
-        self.client
-            .put(&Default::default(), &key, &[Bin::new("data", data.into())])
-            .map_err(SyncFailure::new)?;
-        Ok(())
-    }
-
-    fn model_activity_load(&self, part: &str, id: Uuid) -> Result<Option<Activity>, Error> {
-        let key = self.keys.activity_key(part, id);
-        self.get(&key, ["data"])?
-            .deserialize_bin::<Activity>("data")
-    }
-
-    fn model_activity_choose(&self, part: &str, id: Uuid, chosen: &[Uuid]) -> Result<(), Error> {
-        let key = self.keys.activity_key(part, id);
-        let record = self.get(&key, ["data"])?;
-        let data = record.deserialize_bin::<Activity>("data")?;
-        let mut data = if let Some(d) = data {
-            d
-        } else {
-            return Ok(());
-        };
-
-        data.chosen = Some(chosen.to_owned());
-        let data = bincode::serialize(&data)?;
-        let bins = [Bin::new("data", data.into())];
-
-        self.client
-            .put(&Default::default(), &key, &bins)
-            .map_err(SyncFailure::new)?;
-        Ok(())
-    }
-}
 
 fn read_modify_write<F>(
     client: &Client,
@@ -245,23 +203,10 @@ where
     }
 }
 
-fn push_activity_list(
-    client: &Client,
-    keys: (Key, Key),
-    part: &str,
-    id: Uuid,
-) -> Result<(), Error> {
-    use aerospike::operations as ops;
-
-    let value = id.to_string().into();
-    let push = ops::lists::append("list", &value);
-    let list = [push];
-
-    let _ = client
-        .operate(&WritePolicy::default(), &keys.0, &list)
-        .map_err(SyncFailure::new)?;
-    let _ = client
-        .operate(&WritePolicy::default(), &keys.1, &list)
-        .map_err(SyncFailure::new)?;
-    Ok(())
+fn simple_get(client: &Client, key: &Key, bins: impl Into<Bins>) -> Result<Option<Record>, Error> {
+    client
+        .get(&ReadPolicy::default(), &key, bins)
+        .optional()
+        .map_err(SyncFailure::new)
+        .map_err(Error::from)
 }

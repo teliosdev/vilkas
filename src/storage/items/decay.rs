@@ -71,8 +71,9 @@ pub struct ItemListDecay {
 }
 
 impl ItemListDecay {
-    pub fn decay(self, scope: TimeScope, since: u128, list: &mut ItemList) {
+    pub fn decay(self, scope: TimeScope, list: &mut ItemList) {
         if list.nmods > self.max_modifications {
+            let since = list.epoch - millis_epoch();
             list.items
                 .sort_unstable_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(Ordering::Equal));
             let mut local = vec![];
@@ -112,4 +113,8 @@ impl ItemListDecay {
             },
         }
     }
+}
+
+fn millis_epoch() -> u128 {
+    std::time::UNIX_EPOCH.elapsed().unwrap().as_millis()
 }

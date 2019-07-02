@@ -1,6 +1,6 @@
 #![warn(clippy::all)]
 
-// #[cfg(feature = "aerospike")]
+#[cfg(feature = "aerospike")]
 #[macro_use]
 extern crate aerospike;
 #[macro_use]

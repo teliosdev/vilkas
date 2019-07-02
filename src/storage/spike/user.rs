@@ -1,20 +1,10 @@
-use super::ext::{RecordExt, ResultExt, ValueExt};
-use super::keys::Keys;
+use super::ext::RecordExt;
 use super::SpikeStorage;
-use crate::storage::items::{Item, ItemList, ItemListDecay, NearListDecay, TimeScope};
-use crate::storage::models::Activity;
 use crate::storage::spike::read_modify_write;
-use crate::storage::{FeatureList, UserData};
-use crate::storage::{ItemStorage, ModelStorage, Sealed, Storage, UserStorage};
-use aerospike::errors::{Error as AerospikeError, ErrorKind as AerospikeErrorKind};
-use aerospike::{
-    BatchPolicy, BatchRead, Bin, Bins, Client, ClientPolicy, Expiration, GenerationPolicy, Key,
-    ReadPolicy, Record, ResultCode, Value, WritePolicy,
-};
-use byteorder::{ByteOrder, LittleEndian};
-use config::Config;
-use failure::{Error, SyncFailure};
-use std::collections::HashMap;
+use crate::storage::UserData;
+use crate::storage::UserStorage;
+use aerospike::Bin;
+use failure::Error;
 use uuid::Uuid;
 
 impl UserStorage for SpikeStorage {

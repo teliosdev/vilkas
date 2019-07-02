@@ -23,6 +23,7 @@ pub struct Item {
 pub struct ItemList {
     pub items: Vec<(Uuid, f64)>,
     pub nmods: u64,
+    pub epoch: u128,
 }
 
 pub trait ItemStorage: Sealed {

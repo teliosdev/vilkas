@@ -4,6 +4,7 @@ use uuid::Uuid;
 use super::super::items::TimeScope;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub(super) struct Keys {
     item_namespace: String,
     user_namespace: String,
