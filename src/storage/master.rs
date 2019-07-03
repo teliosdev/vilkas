@@ -8,7 +8,6 @@ use super::{
 };
 use config::Config;
 
-
 use failure::Error;
 use uuid::Uuid;
 #[derive(Debug)]
@@ -43,7 +42,6 @@ macro_rules! expand_storage {
             MasterStorage::Spike($v) => $act,
             // #[cfg(feature = "lmdb")]
             // MasterStorage::Memory($v) => $act,
-
             _ => unreachable!(),
         }
     };
@@ -103,7 +101,7 @@ impl ItemStorage for MasterStorage {
     fn find_items<'i>(
         &self,
         part: &str,
-        items: Box<Iterator<Item = Uuid> + 'i>,
+        items: Box<dyn Iterator<Item = Uuid> + 'i>,
     ) -> Result<Vec<Option<Item>>, Error> {
         expand_storage!(self, storage, storage.find_items(part, items))
     }

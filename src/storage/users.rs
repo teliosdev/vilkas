@@ -9,6 +9,15 @@ pub struct UserData {
     pub history: Vec<Uuid>,
 }
 
+impl UserData {
+    pub fn new(id: impl Into<String>) -> UserData {
+        UserData {
+            id: id.into(),
+            history: vec![],
+        }
+    }
+}
+
 pub trait UserStorage: Sealed {
     fn find_user(&self, part: &str, id: &str) -> Result<UserData, Error>;
     fn user_push_history(&self, part: &str, id: &str, history: Uuid) -> Result<(), Error>;

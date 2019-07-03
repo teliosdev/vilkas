@@ -1,5 +1,5 @@
 pub use self::items::{Item, ItemList, ItemStorage, TimeScope};
-pub use self::models::{BasicExample, Example, FeatureList, ModelStorage, Activity};
+pub use self::models::{Activity, BasicExample, Example, FeatureList, ModelStorage};
 use self::sealed::Sealed;
 pub use self::users::{UserData, UserStorage};
 
@@ -7,7 +7,6 @@ mod items;
 mod master;
 mod models;
 mod users;
-
 
 #[cfg(feature = "lmdb")]
 mod mem;

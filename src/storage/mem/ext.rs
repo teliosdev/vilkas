@@ -1,6 +1,6 @@
 use failure::Error;
-use lmdb::{Database, Transaction};
-use serde::Deserialize;
+use lmdb::{Database, RwTransaction, Transaction};
+use serde::{Deserialize, Serialize};
 
 pub trait ResultExt<T, E> {
     fn optional(self) -> Result<Option<T>, E>;
@@ -22,6 +22,12 @@ pub trait TransactionExt {
         K: AsRef<[u8]>;
 }
 
+pub trait WriteTransactionExt {
+    fn serput<T: Serialize, K>(&mut self, db: Database, key: K, data: &T) -> Result<(), Error>
+    where
+        K: AsRef<[u8]>;
+}
+
 impl<T> TransactionExt for T
 where
     T: Transaction,
@@ -35,5 +41,17 @@ where
             .map(bincode::deserialize)
             .transpose()
             .map_err(Error::from)
+    }
+}
+impl WriteTransactionExt for RwTransaction<'_> {
+    fn serput<T: Serialize, K>(&mut self, db: Database, key: K, data: &T) -> Result<(), Error>
+    where
+        K: AsRef<[u8]>,
+    {
+        let size = bincode::serialized_size(data)? as usize;
+        let buffer = self.reserve(db, &key, size, Default::default())?;
+        let writer = std::io::Cursor::new(buffer);
+        bincode::serialize_into(writer, data)?;
+        Ok(())
     }
 }

@@ -12,12 +12,7 @@ impl UserStorage for SpikeStorage {
         let key = self.keys.user_key(part, id);
         self.get(&key, ["data"])?
             .deserialize_bin::<UserData>("data")
-            .map(|r| {
-                r.unwrap_or_else(|| UserData {
-                    id: id.to_owned(),
-                    history: vec![],
-                })
-            })
+            .map(|r| r.unwrap_or_else(|| UserData::new(id)))
     }
 
     fn user_push_history(&self, part: &str, id: &str, item: Uuid) -> Result<(), Error> {
@@ -27,10 +22,7 @@ impl UserStorage for SpikeStorage {
                 .deserialize_bin::<UserData>("data")
                 .ok()
                 .and_then(core::convert::identity)
-                .unwrap_or_else(|| UserData {
-                    id: id.to_owned(),
-                    history: vec![],
-                });
+                .unwrap_or_else(|| UserData::new(id));
             let mut history = vec![];
             std::mem::swap(&mut history, &mut data.history);
             data.history = std::iter::once(item)
