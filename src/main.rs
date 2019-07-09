@@ -8,13 +8,13 @@ extern crate rouille;
 #[macro_use]
 extern crate serde;
 
-use rand::Rng;
-
 use crate::learn::metrics::roc_auc_score;
 use crate::learn::{logistic, Algorithm, Vector};
+use rand::Rng;
 
 pub mod http;
 pub mod learn;
+mod ord;
 pub mod recommend;
 pub mod storage;
 

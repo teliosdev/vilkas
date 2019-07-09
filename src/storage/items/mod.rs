@@ -11,7 +11,7 @@ pub use self::scope::TimeScope;
 mod decay;
 mod scope;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Item {
     pub id: Uuid,
     pub part: String,
@@ -28,16 +28,28 @@ pub struct ItemList {
 
 pub trait ItemStorage: Sealed {
     fn find_item(&self, part: &str, item: Uuid) -> Result<Option<Item>, Error>;
-    fn find_items<'i>(
-        &self,
-        part: &str,
-        items: Box<dyn Iterator<Item = Uuid> + 'i>,
-    ) -> Result<Vec<Option<Item>>, Error>;
+    fn find_items<Items>(&self, part: &str, items: Items) -> Result<Vec<Option<Item>>, Error>
+    where
+        Items: Iterator<Item = Uuid>;
     fn find_items_near(&self, part: &str, item: Uuid) -> Result<ItemList, Error>;
     fn find_items_top(&self, part: &str, scope: TimeScope) -> Result<ItemList, Error>;
     fn find_items_popular(&self, part: &str, scope: TimeScope) -> Result<ItemList, Error>;
 
+    fn items_insert(&self, item: &Item) -> Result<(), Error>;
     fn items_add_near(&self, part: &str, item: Uuid, near: Uuid) -> Result<(), Error>;
+    fn items_add_bulk_near<Inner, Bulk>(&self, part: &str, bulk: Bulk) -> Result<(), Error>
+    where
+        Inner: Iterator<Item = Uuid>,
+        Bulk: Iterator<Item = (Uuid, Inner)>,
+    {
+        for (item, nears) in bulk {
+            for near in nears {
+                self.items_add_near(part, item, near)?;
+            }
+        }
+
+        Ok(())
+    }
     fn items_view(&self, part: &str, item: Uuid, view_cost: f64) -> Result<(), Error>;
     fn items_list_flush(&self, part: &str) -> Result<(), Error>;
 }

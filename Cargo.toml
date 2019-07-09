@@ -34,7 +34,7 @@ features = ["toml"]
 
 [dependencies.uuid]
 version = "0.7.4"
-features = ["serde"]
+features = ["serde", "v4"]
 
 [dependencies.serde]
 version = "1.0"

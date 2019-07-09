@@ -197,6 +197,10 @@ pub fn predict<'o, T: Float + Default + 'static, E: Iterator<Item = &'o Vector<T
     examples.map(move |example| sigmoid(example.dot(&weights)))
 }
 
+pub fn predict_iter<T: Float + Default + 'static, E: Iterator<Item = (f64, f64)>>(e: E) -> f64 {
+    sigmoid(e.map(|(a, b)| a * b).fold(0.0, std::ops::Add::add))
+}
+
 fn new_weight_step<'c, T: Float + Default>(
     weights: &'c Vector<T>,
     gradient: &'c Vector<T>,
@@ -290,6 +294,6 @@ fn loss_gradient<'l, T: Float + Default + 'static>(
 /// Calculates the sigmoid function against the input.  This is critical to the
 /// logistic regression machine learning model.  This is essentially the
 /// function `S(x) = 1/(1+e^(-x))`.
-fn sigmoid<T: Float>(input: T) -> T {
+pub fn sigmoid<T: Float>(input: T) -> T {
     T::one() / (T::one() + input.neg().exp())
 }

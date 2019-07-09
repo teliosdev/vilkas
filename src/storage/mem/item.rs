@@ -3,6 +3,7 @@ use super::MemStorage;
 use crate::storage::{Item, ItemList, ItemStorage, TimeScope};
 use failure::Error;
 use lmdb::{Database, RwTransaction};
+use std::cmp::Ordering;
 use uuid::Uuid;
 
 impl ItemStorage for MemStorage {
@@ -13,11 +14,10 @@ impl ItemStorage for MemStorage {
         })
     }
 
-    fn find_items<'i>(
-        &self,
-        part: &str,
-        items: Box<dyn Iterator<Item = Uuid> + 'i>,
-    ) -> Result<Vec<Option<Item>>, Error> {
+    fn find_items<Items>(&self, part: &str, items: Items) -> Result<Vec<Option<Item>>, Error>
+    where
+        Items: Iterator<Item = Uuid>,
+    {
         self.read_transaction(self.keys.item_database(), |txn, db| {
             let items = items
                 .map(|item| {
@@ -55,12 +55,35 @@ impl ItemStorage for MemStorage {
         })
     }
 
+    fn items_insert(&self, item: &Item) -> Result<(), Error> {
+        self.write_transaction(self.keys.item_database(), |mut txn, db| {
+            let key = self.keys.item_key(&item.part, item.id);
+            txn.serput(db, &key, item)
+        })
+    }
+
     fn items_add_near(&self, part: &str, item: Uuid, near: Uuid) -> Result<(), Error> {
         self.write_transaction(self.keys.item_database(), |mut txn, db| {
             let key = self.keys.item_near_key(part, item);
             item_list_decay(&mut txn, db, &key, near, 1.0, |list| {
                 self.near_decay.decay(list)
             })
+        })
+    }
+
+    fn items_add_bulk_near<Inner, Bulk>(&self, part: &str, bulk: Bulk) -> Result<(), Error>
+    where
+        Inner: Iterator<Item = Uuid>,
+        Bulk: Iterator<Item = (Uuid, Inner)>,
+    {
+        self.write_transaction(self.keys.item_database(), |txn, db| {
+            for (item, nears) in bulk {
+                let key = self.keys.item_near_key(part, item);
+                item_list_decay_bulk(txn, db, &key, nears, 1.0, |list| {
+                    self.near_decay.decay(list)
+                })?;
+            }
+            Ok(())
         })
     }
 
@@ -86,6 +109,38 @@ impl ItemStorage for MemStorage {
     }
 }
 
+fn item_list_decay_bulk<F, Ids>(
+    txn: &mut RwTransaction<'_>,
+    db: Database,
+    key: &str,
+    ids: Ids,
+    by: f64,
+    decay: F,
+) -> Result<(), Error>
+where
+    F: FnOnce(&mut ItemList),
+    Ids: Iterator<Item = Uuid>,
+{
+    let mut result: ItemList = txn.deget::<ItemList, _>(db, &key)?.unwrap_or_default();
+    let mut ids_count = 0;
+
+    for id in ids {
+        ids_count += 1;
+        if let Some((_, count)) = result.items.iter_mut().find(|(i, _)| *i == id) {
+            *count += by;
+        } else {
+            result.items.push((id, by));
+        }
+    }
+
+    result.nmods += ids_count;
+    decay(&mut result);
+    crate::ord::sort_float(&mut result.items, |(_, a)| *a);
+    txn.serput(db, &key, &result)?;
+    Ok(())
+}
+
+#[inline]
 fn item_list_decay<F>(
     txn: &mut RwTransaction<'_>,
     db: Database,
@@ -97,16 +152,5 @@ fn item_list_decay<F>(
 where
     F: FnOnce(&mut ItemList),
 {
-    let mut result: ItemList = txn.deget::<ItemList, _>(db, &key)?.unwrap_or_default();
-
-    if let Some((_, count)) = result.items.iter_mut().find(|(i, _)| *i == id) {
-        *count += by;
-    } else {
-        result.items.push((id, by));
-    }
-
-    result.nmods += 1;
-    decay(&mut result);
-    txn.serput(db, &key, &result)?;
-    Ok(())
+    item_list_decay_bulk(txn, db, key, std::iter::once(id), by, decay)
 }

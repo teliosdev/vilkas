@@ -3,13 +3,18 @@ use super::items::{ItemListDecay, NearListDecay};
 use super::{Sealed, Storage};
 use config::Config;
 use failure::Error;
-use lmdb::{Database, Environment, EnvironmentFlags, RoTransaction, RwTransaction};
+use lmdb::{
+    Database, DatabaseFlags, Environment, EnvironmentFlags, RoTransaction, RwTransaction,
+    Transaction,
+};
 use std::path::PathBuf;
 
 mod ext;
 mod item;
 mod keys;
 mod model;
+#[cfg(test)]
+mod tests;
 mod user;
 
 #[derive(Debug)]
@@ -24,32 +29,27 @@ pub struct MemStorage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-struct MemStorageConfiguration {
-    path: PathBuf,
+pub struct MemStorageConfiguration {
+    pub path: PathBuf,
     #[serde(default = "defaults::max_readers")]
-    max_readers: u32,
-    #[serde(default = "defaults::max_dbs")]
-    max_dbs: u32,
+    pub max_readers: u32,
     #[serde(default = "defaults::map_size")]
-    map_size: usize,
+    pub map_size: usize,
     #[serde(default)]
     keys: Keys,
     #[serde(default)]
-    near_decay: NearListDecay,
+    pub near_decay: NearListDecay,
     #[serde(default = "ItemListDecay::top_default")]
-    top_decay: ItemListDecay,
+    pub top_decay: ItemListDecay,
     #[serde(default = "ItemListDecay::pop_default")]
-    pop_decay: ItemListDecay,
+    pub pop_decay: ItemListDecay,
     #[serde(default = "defaults::user_history_size")]
-    user_history_size: usize,
+    pub user_history_size: usize,
 }
 
 mod defaults {
     pub const fn max_readers() -> u32 {
         126
-    }
-    pub const fn max_dbs() -> u32 {
-        4
     }
     pub const fn map_size() -> usize {
         // 4096 is page size, so page aligned
@@ -60,11 +60,26 @@ mod defaults {
     }
 }
 
+impl Default for MemStorageConfiguration {
+    fn default() -> MemStorageConfiguration {
+        MemStorageConfiguration {
+            path: Default::default(),
+            max_readers: defaults::max_readers(),
+            map_size: defaults::map_size(),
+            keys: Default::default(),
+            near_decay: Default::default(),
+            top_decay: ItemListDecay::top_default(),
+            pop_decay: ItemListDecay::pop_default(),
+            user_history_size: defaults::user_history_size(),
+        }
+    }
+}
+
 impl Into<MemStorage> for MemStorageConfiguration {
     fn into(self) -> MemStorage {
         let env = Environment::new()
             .set_max_readers(self.max_readers)
-            .set_max_dbs(self.max_dbs)
+            .set_max_dbs(8)
             .set_map_size(self.map_size)
             .set_flags(EnvironmentFlags::WRITE_MAP | EnvironmentFlags::NO_TLS)
             .open(&self.path)
@@ -86,25 +101,57 @@ impl MemStorage {
         let configuration = config
             .get::<MemStorageConfiguration>("storage.memory")
             .expect("could not load memory configuration");
-        configuration.into()
+        let storage: MemStorage = configuration.into();
+        storage.initialize().expect("could not initialize database");
+        storage
+    }
+
+    pub(crate) fn initialize(&self) -> Result<(), Error> {
+        self.env
+            .create_db(Some(self.keys.activity_database()), DatabaseFlags::empty())?;
+        self.env
+            .create_db(Some(self.keys.item_database()), DatabaseFlags::empty())?;
+        self.env
+            .create_db(Some(self.keys.model_database()), DatabaseFlags::empty())?;
+        self.env
+            .create_db(Some(self.keys.user_database()), DatabaseFlags::empty())?;
+        Ok(())
     }
 
     pub fn read_transaction<'e, T, F>(&'e self, db: &str, f: F) -> Result<T, Error>
     where
-        F: FnOnce(RoTransaction<'e>, Database) -> Result<T, Error>,
+        F: FnOnce(&RoTransaction<'e>, Database) -> Result<T, Error>,
     {
         let db = self.env.open_db(Some(db))?;
         let transaction = self.env.begin_ro_txn()?;
-        f(transaction, db)
+        match f(&transaction, db) {
+            Ok(v) => {
+                transaction.commit()?;
+                Ok(v)
+            }
+            Err(e) => {
+                transaction.abort();
+                Err(e)
+            }
+        }
     }
 
     pub fn write_transaction<'e, T, F>(&'e self, db: &str, f: F) -> Result<T, Error>
     where
-        F: FnOnce(RwTransaction<'e>, Database) -> Result<T, Error>,
+        F: FnOnce(&mut RwTransaction<'e>, Database) -> Result<T, Error>,
     {
         let db = self.env.open_db(Some(db))?;
-        let transaction = self.env.begin_rw_txn()?;
-        f(transaction, db)
+        let mut transaction = self.env.begin_rw_txn()?;
+        match f(&mut transaction, db) {
+            Ok(v) => {
+                transaction.commit()?;
+                Ok(v)
+            }
+            Err(e) => {
+                transaction.abort();
+                Err(e)
+            }
+        }
     }
 }
 

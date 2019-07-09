@@ -11,6 +11,10 @@ pub struct Example {
 }
 
 impl Example {
+    pub fn new(basic: BasicExample, item: Item) -> Example {
+        Example { basic, item }
+    }
+
     pub fn features(&self, current: &Example, config: &PartConfig) -> FeatureList<'static> {
         let mut feat = FeatureList::default();
         let list = self.basic.near.unwrap_or_default();

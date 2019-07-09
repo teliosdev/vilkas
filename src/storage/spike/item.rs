@@ -13,11 +13,10 @@ impl ItemStorage for SpikeStorage {
         self.get(&key, ["data"])?.deserialize_bin::<Item>("data")
     }
 
-    fn find_items<'i>(
-        &self,
-        part: &str,
-        items: Box<dyn Iterator<Item = Uuid> + 'i>,
-    ) -> Result<Vec<Option<Item>>, Error> {
+    fn find_items<Items>(&self, part: &str, items: Items) -> Result<Vec<Option<Item>>, Error>
+    where
+        Items: Iterator<Item = Uuid>,
+    {
         let bins = Bins::Some(vec!["data".into()]);
         let keys = items
             .map(|key| self.keys.item_key(part, key))
@@ -42,7 +41,7 @@ impl ItemStorage for SpikeStorage {
     fn find_items_near(&self, part: &str, item: Uuid) -> Result<ItemList, Error> {
         let key = self.keys.item_near_key(part, item);
         Ok(self
-            .get(&key, ["list", "nmods"])?
+            .get(&key, ["list", "nmods", "epoch"])?
             .as_ref()
             .map(build_item_list)
             .unwrap_or_default())
@@ -51,7 +50,7 @@ impl ItemStorage for SpikeStorage {
     fn find_items_top(&self, part: &str, scope: TimeScope) -> Result<ItemList, Error> {
         let key = self.keys.item_top_key(part, scope);
         Ok(self
-            .get(&key, ["list", "nmods"])?
+            .get(&key, ["list", "nmods", "epoch"])?
             .as_ref()
             .map(build_item_list)
             .unwrap_or_default())
@@ -60,10 +59,20 @@ impl ItemStorage for SpikeStorage {
     fn find_items_popular(&self, part: &str, scope: TimeScope) -> Result<ItemList, Error> {
         let key = self.keys.item_pop_key(part, scope);
         Ok(self
-            .get(&key, ["list", "nmods"])?
+            .get(&key, ["list", "nmods", "epoch"])?
             .as_ref()
             .map(build_item_list)
             .unwrap_or_default())
+    }
+
+    fn items_insert(&self, item: &Item) -> Result<(), Error> {
+        let key = self.keys.item_key(&item.part, item.id);
+        let data = bincode::serialize(&item)?;
+        let bins = [Bin::new("data", data.into())];
+        self.client
+            .put(&Default::default(), &key, &bins)
+            .map_err(SyncFailure::new)?;
+        Ok(())
     }
 
     fn items_add_near(&self, part: &str, item: Uuid, near: Uuid) -> Result<(), Error> {
@@ -75,6 +84,22 @@ impl ItemStorage for SpikeStorage {
             return Ok(());
         }
         item_list_decay(&self, &key, |_, list| self.near_decay.decay(list))
+    }
+
+    fn items_add_bulk_near<Inner, Bulk>(&self, part: &str, bulk: Bulk) -> Result<(), Error>
+    where
+        Inner: Iterator<Item = Uuid>,
+        Bulk: Iterator<Item = (Uuid, Inner)>,
+    {
+        for (item, nears) in bulk {
+            let key = self.keys.item_near_key(part, item);
+            let nmods = increment_item_list_map_bulk(&self.client, &key, nears, 1.0)?;
+            if nmods >= self.near_decay.max_modifications {
+                item_list_decay(&self, &key, |_, list| self.near_decay.decay(list))?;
+            }
+        }
+
+        Ok(())
     }
 
     fn items_view(&self, part: &str, item: Uuid, view_cost: f64) -> Result<(), Error> {
@@ -144,11 +169,29 @@ fn build_item_list(record: &Record) -> ItemList {
         .get("nmods")
         .and_then(|v| v.as_u64())
         .unwrap_or_default();
+    let epoch = record
+        .bins
+        .get("epoch")
+        .and_then(|v| v.as_blob())
+        .and_then(|data| LittleEndian::read_u128(data))
+        .unwrap_or(0u128);
 
-    ItemList { items, nmods }
+    ItemList {
+        items,
+        nmods,
+        epoch,
+    }
 }
 
-fn increment_item_list_map(client: &Client, key: &Key, id: Uuid, by: f64) -> Result<u64, Error> {
+fn increment_item_list_map_bulk<Ids>(
+    client: &Client,
+    key: &Key,
+    ids: Ids,
+    by: f64,
+) -> Result<u64, Error>
+where
+    Ids: Iterator<Item = Uuid>,
+{
     // We'll have to do some weird stuff to get this to work.
     // First, do our imports...
     use aerospike::operations::{self as ops, MapPolicy};
@@ -156,21 +199,35 @@ fn increment_item_list_map(client: &Client, key: &Key, id: Uuid, by: f64) -> Res
     // (our near item) in the list; this should create a key
     // if it did not exist previously.
     let map_policy_default = MapPolicy::default();
-    let map_key = id.to_string().into();
-    let one_value = by.into();
-    let incr = ops::maps::increment_value(&map_policy_default, "list", &map_key, &one_value);
-    // Then, we'll increment the nmods key...
-    let add_bin = Bin::new("nmods", Value::UInt(1));
-    let add = ops::add(&add_bin);
-    // and retrieve it, for use.
-    let get = ops::get_bin("nmods");
-    let op = [incr, add, get];
+    // Create our keys list.  This is a list of keys to add to
+    // in the near list for the given key.
+    let map_keys = ids
+        .map(|id| Value::from(id.to_string()))
+        .collect::<Vec<_>>();
+    // Create our operations list.  We'll reserve enough capacity
+    // for the increment values as well as the bin add and
+    // retrieval.
+    let mut ops = Vec::with_capacity(map_keys.len() + 2);
+    // The amount to add by.
+    let one_value = Value::from(by);
+    // Now, we'll push all of these generated operations into
+    // our ops list.
+    ops.extend(map_keys.iter().map(|map_key| {
+        ops::maps::increment_value(&map_policy_default, "list", map_key, &one_value)
+    }));
+    // Now, create the addition operation.  This will add the
+    // number of keys above to the number of modifications of
+    // the list, which...
+    let add_bin = Bin::new("nmods", Value::UInt(map_keys.len() as u64));
+    ops.push(ops::add(&add_bin));
+    // We then retrieve, and return.
+    ops.push(ops::get_bin("nmods"));
 
     // The resulting "record" should contain the nmods bin,
     // which should, at this point, be at least 1; but we'll
     // handle it gracefully in case something funky happens.
     let nmods = client
-        .operate(&WritePolicy::default(), &key, &op)
+        .operate(&WritePolicy::default(), &key, &ops[..])
         .map_err(SyncFailure::new)?
         .bins
         .get("nmods")
@@ -179,11 +236,16 @@ fn increment_item_list_map(client: &Client, key: &Key, id: Uuid, by: f64) -> Res
     Ok(nmods)
 }
 
+#[inline]
+fn increment_item_list_map(client: &Client, key: &Key, id: Uuid, by: f64) -> Result<u64, Error> {
+    increment_item_list_map_bulk(client, key, std::iter::once(id), by)
+}
+
 fn item_list_decay<F>(spike: &SpikeStorage, key: &Key, decay: F) -> Result<(), Error>
 where
-    F: Fn(Option<u128>, &mut ItemList),
+    F: Fn(&mut ItemList),
 {
-    read_modify_write(&spike.client, key, ["list", "nmods", "since"], |record| {
+    read_modify_write(&spike.client, key, ["list", "nmods", "epoch"], |record| {
         // Load the list from aerospike.
         let mut list = record.as_ref().map(build_item_list).unwrap_or_default();
         // Now, calculate the decays, as well as capping the list.

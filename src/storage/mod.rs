@@ -9,9 +9,9 @@ mod models;
 mod users;
 
 #[cfg(feature = "lmdb")]
-mod mem;
+pub mod mem;
 #[cfg(feature = "aerospike")]
-mod spike;
+pub mod spike;
 pub trait Storage: ItemStorage + UserStorage + ModelStorage + Sealed {}
 
 pub type DefaultStorage = master::MasterStorage;

@@ -40,8 +40,8 @@ macro_rules! expand_storage {
         match $base {
             #[cfg(feature = "aerospike")]
             MasterStorage::Spike($v) => $act,
-            // #[cfg(feature = "lmdb")]
-            // MasterStorage::Memory($v) => $act,
+            #[cfg(feature = "lmdb")]
+            MasterStorage::Memory($v) => $act,
             _ => unreachable!(),
         }
     };
@@ -98,11 +98,10 @@ impl ItemStorage for MasterStorage {
         expand_storage!(self, storage, storage.find_item(part, item))
     }
 
-    fn find_items<'i>(
-        &self,
-        part: &str,
-        items: Box<dyn Iterator<Item = Uuid> + 'i>,
-    ) -> Result<Vec<Option<Item>>, Error> {
+    fn find_items<Items>(&self, part: &str, items: Items) -> Result<Vec<Option<Item>>, Error>
+    where
+        Items: Iterator<Item = Uuid>,
+    {
         expand_storage!(self, storage, storage.find_items(part, items))
     }
 
@@ -118,8 +117,20 @@ impl ItemStorage for MasterStorage {
         expand_storage!(self, storage, storage.find_items_popular(part, scope))
     }
 
+    fn items_insert(&self, item: &Item) -> Result<(), Error> {
+        expand_storage!(self, storage, storage.items_insert(item))
+    }
+
     fn items_add_near(&self, part: &str, item: Uuid, near: Uuid) -> Result<(), Error> {
         expand_storage!(self, storage, storage.items_add_near(part, item, near))
+    }
+
+    fn items_add_bulk_near<Inner, Bulk>(&self, part: &str, bulk: Bulk) -> Result<(), Error>
+    where
+        Inner: Iterator<Item = Uuid>,
+        Bulk: Iterator<Item = (Uuid, Inner)>,
+    {
+        expand_storage!(self, storage, storage.items_add_bulk_near(part, bulk))
     }
 
     fn items_view(&self, part: &str, item: Uuid, view_cost: f64) -> Result<(), Error> {

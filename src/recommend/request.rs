@@ -9,15 +9,15 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
     #[serde(alias = "p")]
-    part: String,
+    pub part: String,
     #[serde(alias = "u")]
-    user: Uuid,
+    pub user: Uuid,
     #[serde(alias = "t")]
-    current: Uuid,
+    pub current: Uuid,
     #[serde(alias = "w")]
-    whitelist: Option<Vec<Uuid>>,
+    pub whitelist: Option<Vec<Uuid>>,
     #[serde(alias = "c")]
-    count: usize,
+    pub count: usize,
 }
 
 impl Request {
@@ -96,29 +96,9 @@ impl Request {
             .cloned()
             .take(max)
             .collect::<Vec<BasicExample>>();
-        list.sort_by_cached_key(|a| ReverseOrd(FloatOrd(a.importance())));
+        crate::ord::sort_cached_float(&mut list, |a| a.importance());
 
         Ok(list)
-    }
-}
-
-#[derive(Debug, PartialOrd, PartialEq)]
-struct FloatOrd<F>(F);
-
-impl<F: PartialOrd> Ord for FloatOrd<F> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap_or(Ordering::Equal)
-    }
-}
-
-impl<F: PartialEq> Eq for FloatOrd<F> {}
-
-#[derive(Debug, PartialOrd, PartialEq, Eq)]
-struct ReverseOrd<F>(F);
-
-impl<F: Ord> Ord for ReverseOrd<F> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.0.cmp(&other.0).reverse()
     }
 }
 

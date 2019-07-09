@@ -14,8 +14,7 @@ pub struct NearListDecay {
 impl NearListDecay {
     pub fn decay(&self, list: &mut ItemList) {
         if list.nmods > self.max_modifications {
-            list.items
-                .sort_unstable_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(Ordering::Equal));
+            crate::ord::sort_float(&mut list.items, |(_, a)| *a);
             let mut local = vec![];
             // we have to do this because we can't really move the list
             // items out of a borrowed context - so we do a swap,
@@ -29,6 +28,7 @@ impl NearListDecay {
                 .map(|(id, count)| (id, self.func.decay(count, 1.0)))
                 .take(self.max_count as usize)
                 .collect();
+            list.nmods = 0;
         }
     }
 }
@@ -38,9 +38,9 @@ impl Default for NearListDecay {
         NearListDecay {
             max_modifications: 512,
             max_count: 64,
-            func: DecayFunction::Log {
-                base: std::f64::consts::E,
-                coefficient: 1.0,
+            func: DecayFunction::Linear {
+                coefficient: 1.0 / std::f64::consts::E,
+                offset: 1.0,
             },
         }
     }
@@ -49,14 +49,37 @@ impl Default for NearListDecay {
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 pub enum DecayFunction {
-    Log { base: f64, coefficient: f64 },
-    ExpMul { base: f64, powmul: f64 },
+    Ln1p {
+        coefficient: f64,
+    },
+    Linear {
+        coefficient: f64,
+        offset: f64,
+    },
+    Log {
+        offset: f64,
+        base: f64,
+        coefficient: f64,
+    },
+    ExpMul {
+        base: f64,
+        powmul: f64,
+    },
 }
 
 impl DecayFunction {
     pub fn decay(self, value: f64, lambda: f64) -> f64 {
         match self {
-            DecayFunction::Log { base, coefficient } => value.log(base) * coefficient * lambda,
+            DecayFunction::Ln1p { coefficient } => value.ln_1p() * coefficient * lambda,
+            DecayFunction::Log {
+                offset,
+                base,
+                coefficient,
+            } => (value + offset).log(base) * coefficient * lambda,
+            DecayFunction::Linear {
+                coefficient,
+                offset,
+            } => value * coefficient * lambda + offset,
             DecayFunction::ExpMul { base, powmul } => value * base.powf(powmul * lambda),
         }
     }
@@ -73,9 +96,13 @@ pub struct ItemListDecay {
 impl ItemListDecay {
     pub fn decay(self, scope: TimeScope, list: &mut ItemList) {
         if list.nmods > self.max_modifications {
-            let since = list.epoch - millis_epoch();
-            list.items
-                .sort_unstable_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(Ordering::Equal));
+            let now = millis_epoch();
+            let since = if list.epoch == 0 {
+                1000 * 60 * 60 * 24
+            } else {
+                now - list.epoch
+            };
+            crate::ord::sort_float(&mut list.items, |(_, a)| *a);
             let mut local = vec![];
             // we have to do this because we can't really move the list
             // items out of a borrowed context - so we do a swap,
@@ -89,6 +116,8 @@ impl ItemListDecay {
                 .map(|(id, count)| (id, self.func.decay(count, since as f64 / scope.half_life())))
                 .take(self.max_count as usize)
                 .collect();
+            list.nmods = 0;
+            list.epoch = now;
         }
     }
 
