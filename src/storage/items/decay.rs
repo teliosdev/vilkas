@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use super::{ItemList, TimeScope};
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]

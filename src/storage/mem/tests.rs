@@ -1,5 +1,5 @@
 use super::{MemStorage, MemStorageConfiguration};
-use crate::storage::{Item, ItemStorage, Storage};
+use crate::storage::{Item, ItemStorage};
 use rand::distributions::Alphanumeric;
 use rand::seq::SliceRandom;
 use rand::Rng;

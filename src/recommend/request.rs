@@ -1,7 +1,6 @@
 use crate::recommend::Core;
 use crate::storage::{BasicExample, Example, Item, Storage, TimeScope};
 use failure::Error;
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use uuid::Uuid;
@@ -42,7 +41,7 @@ impl Request {
         let buf = BufIter::new(candidates.into_iter(), 32);
         let storage = core.storage.clone();
         let iter = buf.flat_map(move |group: Vec<BasicExample>| {
-            let result = storage.find_items(&self.part, Box::new(group.iter().map(|e| e.id)));
+            let result = storage.find_items(&self.part, group.iter().map(|e| e.id));
             result
                 .ok()
                 .into_iter()
@@ -117,6 +116,7 @@ impl CandidateList {
         }
     }
 
+    #[allow(dead_code)]
     pub fn into_inner(self) -> HashMap<Uuid, BasicExample> {
         self.map
     }

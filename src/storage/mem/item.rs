@@ -3,7 +3,7 @@ use super::MemStorage;
 use crate::storage::{Item, ItemList, ItemStorage, TimeScope};
 use failure::Error;
 use lmdb::{Database, RwTransaction};
-use std::cmp::Ordering;
+
 use uuid::Uuid;
 
 impl ItemStorage for MemStorage {
@@ -56,7 +56,7 @@ impl ItemStorage for MemStorage {
     }
 
     fn items_insert(&self, item: &Item) -> Result<(), Error> {
-        self.write_transaction(self.keys.item_database(), |mut txn, db| {
+        self.write_transaction(self.keys.item_database(), |txn, db| {
             let key = self.keys.item_key(&item.part, item.id);
             txn.serput(db, &key, item)
         })

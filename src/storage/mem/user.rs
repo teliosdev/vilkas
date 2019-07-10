@@ -14,7 +14,7 @@ impl UserStorage for MemStorage {
     }
 
     fn user_push_history(&self, part: &str, id: &str, item: Uuid) -> Result<(), Error> {
-        self.write_transaction(self.keys.user_database(), |mut txn, db| {
+        self.write_transaction(self.keys.user_database(), |txn, db| {
             let key = self.keys.user_key(part, id);
             let data = txn.deget::<UserData, _>(db, &key)?;
             let mut data = data.unwrap_or_else(|| UserData::new(id));

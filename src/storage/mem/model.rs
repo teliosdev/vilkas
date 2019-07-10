@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 impl ModelStorage for MemStorage {
     fn set_default_model(&self, list: FeatureList) -> Result<(), Error> {
-        self.write_transaction(self.keys.model_database(), |mut txn, db| {
+        self.write_transaction(self.keys.model_database(), |txn, db| {
             let key = self.keys.default_model_key();
             txn.serput(db, &key, &list)?;
             Ok(())
@@ -30,7 +30,7 @@ impl ModelStorage for MemStorage {
     }
 
     fn model_activity_save(&self, part: &str, activity: &Activity) -> Result<(), Error> {
-        self.write_transaction(self.keys.model_database(), |mut txn, db| {
+        self.write_transaction(self.keys.model_database(), |txn, db| {
             let key = self.keys.activity_key(part, activity.id);
             txn.serput(db, &key, activity)?;
             Ok(())
@@ -45,9 +45,9 @@ impl ModelStorage for MemStorage {
     }
 
     fn model_activity_choose(&self, part: &str, id: Uuid, chosen: &[Uuid]) -> Result<(), Error> {
-        self.write_transaction(self.keys.model_database(), |mut txn, db| {
+        self.write_transaction(self.keys.model_database(), |txn, db| {
             let key = self.keys.activity_key(part, id);
-            let mut item = txn.deget::<Activity, _>(db, &key)?;
+            let item = txn.deget::<Activity, _>(db, &key)?;
             if let Some(mut item) = item {
                 item.chosen = Some(chosen.to_owned());
                 txn.serput(db, &key, &item)?;

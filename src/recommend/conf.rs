@@ -4,8 +4,21 @@ use std::collections::{HashMap, HashSet};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct PartConfig {
+    #[serde(default = "defaults::max_candidate_count")]
     pub max_candidate_count: usize,
+    #[serde(default)]
     pub meta_features: HashMap<String, MetaFeature>,
+    #[serde(default = "defaults::upgrade_chance")]
+    pub upgrade_chance: f64,
+}
+
+mod defaults {
+    pub fn max_candidate_count() -> usize {
+        256
+    }
+    pub fn upgrade_chance() -> f64 {
+        0.10
+    }
 }
 
 impl Default for PartConfig {
@@ -13,6 +26,7 @@ impl Default for PartConfig {
         PartConfig {
             max_candidate_count: 256,
             meta_features: HashMap::new(),
+            upgrade_chance: 0.10,
         }
     }
 }
