@@ -39,11 +39,11 @@ impl<F: Ord + Debug> Ord for ReverseOrd<F> {
     }
 }
 
-pub fn sort_float<T, F: FnMut(&T) -> f64>(list: &mut Vec<T>, mut f: F) -> () {
+pub fn sort_float<T, F: FnMut(&T) -> f64>(list: &mut Vec<T>, mut f: F) {
     list.sort_unstable_by_key(|a| ReverseOrd(FloatOrd(f(a))));
 }
 
-pub fn sort_cached_float<T, F: FnMut(&T) -> f64>(list: &mut Vec<T>, mut f: F) -> () {
+pub fn sort_cached_float<T, F: FnMut(&T) -> f64>(list: &mut Vec<T>, mut f: F) {
     list.sort_by_cached_key(|a| ReverseOrd(FloatOrd(f(a))));
 }
 
