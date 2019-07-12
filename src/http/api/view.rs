@@ -1,11 +1,11 @@
 use crate::http::Context;
-use crate::storage::{ItemStorage, UserStorage};
+use crate::storage::{Storage, UserData};
 use failure::Error;
 use rouille::{Request, Response};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ViewRequest {
+pub struct ViewRequest {
     #[serde(alias = "p")]
     pub part: String,
     #[serde(alias = "u")]
@@ -16,7 +16,7 @@ struct ViewRequest {
     pub actid: Option<Uuid>,
 }
 
-pub fn apply_get(request: &Request, context: &Context) -> Response {
+pub fn apply_get(request: &Request, context: &Context<impl Storage>) -> Response {
     let part = request.get_param("part").or_else(|| request.get_param("p"));
     let user = request.get_param("user").or_else(|| request.get_param("u"));
     let item = request.get_param("item").or_else(|| request.get_param("i"));
@@ -43,14 +43,38 @@ pub fn apply_get(request: &Request, context: &Context) -> Response {
     }
 }
 
-pub fn apply_post(request: &Request, context: &Context) -> Response {
+pub fn apply_post(request: &Request, context: &Context<impl Storage>) -> Response {
     let view: ViewRequest = try_or_400!(rouille::input::json_input(request));
     apply(request, &view, context).unwrap_or_else(|_| Response::empty_204().with_status_code(500))
 }
 
-fn apply(_request: &Request, view: &ViewRequest, context: &Context) -> Result<Response, Error> {
+fn apply(
+    _request: &Request,
+    view: &ViewRequest,
+    context: &Context<impl Storage>,
+) -> Result<Response, Error> {
     let user = context.storage.find_user(&view.part, &view.user)?;
 
+    calculate_near(view, &user, context)?;
+    context
+        .storage
+        .items_view(&view.part, view.item, context.last.push_view())?;
+    context
+        .storage
+        .user_push_history(&view.part, &view.user, view.item)?;
+
+    if let Some(activity) = view.actid {
+        complete_activity(activity, view, context)?;
+    }
+
+    Ok(Response::empty_204())
+}
+
+fn calculate_near(
+    view: &ViewRequest,
+    user: &UserData,
+    context: &Context<impl Storage>,
+) -> Result<(), Error> {
     let nears = std::iter::once((
         view.item,
         Box::new(user.history.iter().cloned()) as Box<dyn Iterator<Item = _>>,
@@ -62,10 +86,16 @@ fn apply(_request: &Request, view: &ViewRequest, context: &Context) -> Result<Re
         )
     }));
 
-    context.storage.items_add_bulk_near(&view.part, nears)?;
+    context.storage.items_add_bulk_near(&view.part, nears)
+}
+
+fn complete_activity(
+    activity: Uuid,
+    view: &ViewRequest,
+    context: &Context<impl Storage>,
+) -> Result<(), Error> {
+    let chosen = [view.item];
     context
         .storage
-        .items_view(&view.part, view.item, context.last.push_view())?;
-
-    Ok(Response::empty_204())
+        .model_activity_choose(&view.part, activity, &chosen)
 }

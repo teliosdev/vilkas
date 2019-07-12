@@ -88,12 +88,12 @@ impl ItemStorage for SpikeStorage {
 
     fn items_add_bulk_near<Inner, Bulk>(&self, part: &str, bulk: Bulk) -> Result<(), Error>
     where
-        Inner: Iterator<Item = Uuid>,
-        Bulk: Iterator<Item = (Uuid, Inner)>,
+        Inner: IntoIterator<Item = Uuid>,
+        Bulk: IntoIterator<Item = (Uuid, Inner)>,
     {
-        for (item, nears) in bulk {
+        for (item, nears) in bulk.into_iter() {
             let key = self.keys.item_near_key(part, item);
-            let nmods = increment_item_list_map_bulk(&self.client, &key, nears, 1.0)?;
+            let nmods = increment_item_list_map_bulk(&self.client, &key, nears.into_iter(), 1.0)?;
             if nmods >= self.near_decay.max_modifications {
                 item_list_decay(&self, &key, |_, list| self.near_decay.decay(list))?;
             }

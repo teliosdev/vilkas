@@ -24,4 +24,9 @@ pub trait ModelStorage: Sealed {
     fn model_activity_save(&self, part: &str, activity: &Activity) -> Result<(), Error>;
     fn model_activity_load(&self, part: &str, id: Uuid) -> Result<Option<Activity>, Error>;
     fn model_activity_choose(&self, part: &str, id: Uuid, chosen: &[Uuid]) -> Result<(), Error>;
+
+    fn model_activity_pluck(&self) -> Result<Vec<Activity>, Error>;
+    fn model_activity_delete_all<'p, Ids>(&self, id: Ids) -> Result<(), Error>
+    where
+        Ids: IntoIterator<Item = (&'p str, Uuid)>;
 }

@@ -19,10 +19,11 @@ mod user;
 pub struct SpikeStorage {
     client: Client,
     keys: Keys,
-    user_history_size: usize,
+    user_history_length: usize,
     short_activity_lifetime: u32,
     long_activity_lifetime: u32,
     list_activity_lifetime: u32,
+    list_activity_length: u32,
     near_decay: NearListDecay,
     top_decay: ItemListDecay,
     pop_decay: ItemListDecay,
@@ -46,14 +47,16 @@ struct SpikeStorageConfiguration {
     top_decay: ItemListDecay,
     #[serde(default = "ItemListDecay::pop_default")]
     pop_decay: ItemListDecay,
-    #[serde(default = "defaults::user_history_size")]
-    user_history_size: usize,
+    #[serde(default = "defaults::user_history_length")]
+    user_history_length: usize,
     #[serde(default = "defaults::short_activity_lifetime")]
     short_activity_lifetime: u32,
     #[serde(default = "defaults::long_activity_lifetime")]
     long_activity_lifetime: u32,
     #[serde(default = "defaults::list_activity_lifetime")]
     list_activity_lifetime: u32,
+    #[serde(default = "defaults::list_activity_length")]
+    list_activity_length: u32,
 }
 
 mod defaults {
@@ -63,7 +66,7 @@ mod defaults {
     pub const fn aerospike_services_alternate() -> bool {
         false
     }
-    pub const fn user_history_size() -> usize {
+    pub const fn user_history_length() -> usize {
         16
     }
     // ten minutes
@@ -77,6 +80,10 @@ mod defaults {
     // ditto
     pub const fn list_activity_lifetime() -> u32 {
         60 * 60 * 2
+    }
+
+    pub const fn list_activity_length() -> u32 {
+        256
     }
 }
 
@@ -94,10 +101,11 @@ impl Into<SpikeStorage> for SpikeStorageConfiguration {
         SpikeStorage {
             client,
             keys: self.keys,
-            user_history_size: self.user_history_size,
+            user_history_length: self.user_history_length,
             short_activity_lifetime: self.short_activity_lifetime,
             long_activity_lifetime: self.long_activity_lifetime,
             list_activity_lifetime: self.list_activity_lifetime,
+            list_activity_length: self.list_activity_length,
             near_decay: self.near_decay,
             top_decay: self.top_decay,
             pop_decay: self.pop_decay,

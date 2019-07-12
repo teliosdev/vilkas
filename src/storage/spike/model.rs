@@ -2,8 +2,11 @@ use super::ext::RecordExt;
 use super::ModelStorage;
 use super::SpikeStorage;
 use crate::storage::models::Activity;
+use crate::storage::spike::ext::{ResultExt, ValueExt};
 use crate::storage::FeatureList;
-use aerospike::{Bin, Client, Expiration, Key, Value, WritePolicy};
+use aerospike::{
+    BatchPolicy, BatchRead, Bin, Client, Expiration, Key, ReadPolicy, Value, WritePolicy,
+};
 use failure::{Error, SyncFailure};
 use uuid::Uuid;
 
@@ -51,6 +54,7 @@ impl ModelStorage for SpikeStorage {
                 &self.client,
                 (local_key, default_key),
                 self.list_activity_lifetime,
+                self.list_activity_length,
                 part,
                 activity.id,
             )?;
@@ -86,16 +90,66 @@ impl ModelStorage for SpikeStorage {
         self.client
             .put(&policy, &key, &bins)
             .map_err(SyncFailure::new)?;
+        Ok(())
+    }
 
-        let local_key = self.keys.activity_list_key(part);
+    fn model_activity_pluck(&self) -> Result<Vec<Activity>, Error> {
         let default_key = self.keys.default_activity_list_key();
-        push_activity_list(
-            &self.client,
-            (local_key, default_key),
-            self.list_activity_lifetime,
-            part,
-            id,
-        )?;
+        let result = self
+            .client
+            .get(&ReadPolicy::default(), &default_key, ["list"])
+            .optional()?;
+        let bins = Bins::from(["data"]);
+        let list = result.as_ref().and_then(|r| r.bins.get("list"));
+        let list = list.and_then(|v| v.as_list());
+        let items = list
+            .iter()
+            .flat_map(|i| i.iter())
+            .flat_map(|v: &Value| v.as_list())
+            .flat_map(|item| {
+                let part = item.get(0).and_then(|part| part.as_str());
+                let id = item
+                    .get(1)
+                    .and_then(|id| id.as_str())
+                    .and_then(|v| v.parse::<Uuid>().ok());
+                part.and_then(|p| id.map(|i| (p, i)))
+            })
+            .map(|(part, id)| {
+                let key = self.keys.activity_key(part, id);
+                BatchRead {
+                    key,
+                    bins: &bins,
+                    record: None,
+                }
+            })
+            .collect::<Vec<_>>();
+        self.client.delete(&WritePolicy::default(), &default_key)?;
+        let result = self.client.batch_get(&BatchPolicy::default(), items)?;
+
+        let result = result
+            .into_iter()
+            .flat_map(|read| read.record)
+            .flat_map(|record| {
+                record
+                    .bins
+                    .get("data")
+                    .and_then(|data| data.as_blob())
+                    .and_then(|data| bincode::deserialize::<Activity>(data).ok())
+            })
+            .collect::<Vec<_>>();
+        Ok(result)
+    }
+
+    fn model_activity_delete_all<Ids>(&self, id: Ids) -> Result<(), Error>
+    where
+        Ids: IntoIterator<Item = (&'_ str, Uuid)>,
+    {
+        let keys = ids
+            .into_iter()
+            .map(|(part, id)| self.keys.activity_key(part, id));
+        for key in keys {
+            self.client.delete(&WritePolicy::default(), key)?;
+        }
         Ok(())
     }
 }
@@ -104,6 +158,7 @@ fn push_activity_list(
     client: &Client,
     keys: (Key, Key),
     lifetime: u32,
+    cap: u32,
     part: &str,
     id: Uuid,
 ) -> Result<(), Error> {
@@ -114,12 +169,13 @@ fn push_activity_list(
     ]
     .into();
     let push = ops::lists::append("list", &value);
-    let list = [push];
+    let cap = ops::lists::remove_range_from("list", cap as i64);
+    let list = [push, cap];
 
     let policy = WritePolicy::new(0, Expiration::Seconds(lifetime));
-    let _ = client
-        .operate(&policy, &keys.0, &list)
-        .map_err(SyncFailure::new)?;
+    //    let _ = client
+    //        .operate(&policy, &keys.0, &list)
+    //        .map_err(SyncFailure::new)?;
     let _ = client
         .operate(&policy, &keys.1, &list)
         .map_err(SyncFailure::new)?;

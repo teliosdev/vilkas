@@ -22,7 +22,7 @@ impl UserStorage for MemStorage {
             std::mem::swap(&mut history, &mut data.history);
             data.history = std::iter::once(item)
                 .chain(history.into_iter())
-                .take(self.user_history_size)
+                .take(self.user_history_length)
                 .collect();
             txn.serput(db, &key, &data)?;
             Ok(())

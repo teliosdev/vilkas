@@ -16,10 +16,11 @@ impl ItemStorage for MemStorage {
 
     fn find_items<Items>(&self, part: &str, items: Items) -> Result<Vec<Option<Item>>, Error>
     where
-        Items: Iterator<Item = Uuid>,
+        Items: IntoIterator<Item = Uuid>,
     {
         self.read_transaction(self.keys.item_database(), |txn, db| {
             let items = items
+                .into_iter()
                 .map(|item| {
                     let key = self.keys.item_key(part, item);
                     txn.deget::<Item, _>(db, &key)
@@ -73,13 +74,13 @@ impl ItemStorage for MemStorage {
 
     fn items_add_bulk_near<Inner, Bulk>(&self, part: &str, bulk: Bulk) -> Result<(), Error>
     where
-        Inner: Iterator<Item = Uuid>,
-        Bulk: Iterator<Item = (Uuid, Inner)>,
+        Inner: IntoIterator<Item = Uuid>,
+        Bulk: IntoIterator<Item = (Uuid, Inner)>,
     {
         self.write_transaction(self.keys.item_database(), |txn, db| {
-            for (item, nears) in bulk {
+            for (item, nears) in bulk.into_iter() {
                 let key = self.keys.item_near_key(part, item);
-                item_list_decay_bulk(txn, db, &key, nears, 1.0, |list| {
+                item_list_decay_bulk(txn, db, &key, nears.into_iter(), 1.0, |list| {
                     self.near_decay.decay(list)
                 })?;
             }

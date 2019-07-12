@@ -1,5 +1,6 @@
 pub use self::conf::PartConfig;
 pub use self::request::Request;
+use crate::learn::logistic::Parameters;
 use crate::storage::{Activity, BasicExample, Example, FeatureList, Storage};
 use config::Config;
 use failure::Error;
@@ -8,30 +9,29 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::Arc;
+use std::time::Duration;
 use uuid::Uuid;
 
 mod conf;
 mod request;
+mod train;
 
 #[derive(Debug, Clone)]
 pub struct Core<T: Storage + 'static> {
-    storage: Arc<T>,
-
-    part_config: HashMap<String, PartConfig>,
-    default_config: PartConfig,
+    pub storage: Arc<T>,
+    pub parameters: Parameters<f64>,
+    pub part_config: HashMap<String, PartConfig>,
+    pub default_config: PartConfig,
 }
 
 impl<T: Storage + 'static> Core<T> {
     pub fn of(storage: &Arc<T>, config: &Config) -> Core<T> {
-        let default_config = config
-            .get("recommend.core.default")
-            .expect("could not load default config");
-        let part_config = config
-            .get("recommend.core.parts")
-            .expect("could not load part configs");
-
+        let default_config = config.get("recommend.core.default").unwrap_or_default();
+        let part_config = config.get("recommend.core.parts").unwrap_or_default();
+        let parameters = config.get("recommend.core.parameters").unwrap_or_default();
         Core {
             storage: storage.clone(),
+            parameters,
             part_config,
             default_config,
         }
@@ -71,6 +71,22 @@ impl<T: Storage + 'static> Core<T> {
         Ok(Response {
             result: scored.into_iter().map(|(v, s)| (v.item.id, s)).collect(),
             id,
+        })
+    }
+}
+
+impl<T: Storage + Send + Sync + 'static> Core<T> {
+    pub fn train_loop(core: &Arc<Self>) -> std::thread::JoinHandle<()> {
+        let core = core.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(60 * 10));
+            info!("performing load_train...");
+            match core.load_train() {
+                Ok(_) => info!("load_train successful!"),
+                Err(e) => {
+                    error!("error occurred during train_loop: {:?}", e);
+                }
+            }
         })
     }
 }

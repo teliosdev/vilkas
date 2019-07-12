@@ -1,0 +1,6 @@
+[storage]
+type = "memory"
+
+[storage.memory]
+path = "vilkas-storage"
+

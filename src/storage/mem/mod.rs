@@ -14,14 +14,15 @@ mod item;
 mod keys;
 mod model;
 #[cfg(test)]
-mod tests;
+pub mod tests;
 mod user;
 
 #[derive(Debug)]
 pub struct MemStorage {
     env: Environment,
     keys: Keys,
-    user_history_size: usize,
+    user_history_length: usize,
+    activity_list_length: u32,
     near_decay: NearListDecay,
     top_decay: ItemListDecay,
     pop_decay: ItemListDecay,
@@ -43,8 +44,10 @@ pub struct MemStorageConfiguration {
     pub top_decay: ItemListDecay,
     #[serde(default = "ItemListDecay::pop_default")]
     pub pop_decay: ItemListDecay,
-    #[serde(default = "defaults::user_history_size")]
-    pub user_history_size: usize,
+    #[serde(default = "defaults::user_history_length")]
+    pub user_history_length: usize,
+    #[serde(default = "defaults::activity_list_length")]
+    pub activity_list_length: u32,
 }
 
 mod defaults {
@@ -55,8 +58,11 @@ mod defaults {
         // 4096 is page size, so page aligned
         4096 * 1024
     }
-    pub const fn user_history_size() -> usize {
+    pub const fn user_history_length() -> usize {
         16
+    }
+    pub const fn activity_list_length() -> u32 {
+        256
     }
 }
 
@@ -70,7 +76,8 @@ impl Default for MemStorageConfiguration {
             near_decay: Default::default(),
             top_decay: ItemListDecay::top_default(),
             pop_decay: ItemListDecay::pop_default(),
-            user_history_size: defaults::user_history_size(),
+            user_history_length: defaults::user_history_length(),
+            activity_list_length: defaults::activity_list_length(),
         }
     }
 }
@@ -88,7 +95,8 @@ impl Into<MemStorage> for MemStorageConfiguration {
         MemStorage {
             env,
             keys: self.keys,
-            user_history_size: self.user_history_size,
+            user_history_length: self.user_history_length,
+            activity_list_length: self.activity_list_length,
             near_decay: self.near_decay,
             top_decay: self.top_decay,
             pop_decay: self.pop_decay,

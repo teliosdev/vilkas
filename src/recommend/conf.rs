@@ -24,9 +24,9 @@ mod defaults {
 impl Default for PartConfig {
     fn default() -> PartConfig {
         PartConfig {
-            max_candidate_count: 256,
+            max_candidate_count: defaults::max_candidate_count(),
             meta_features: HashMap::new(),
-            upgrade_chance: 0.10,
+            upgrade_chance: defaults::upgrade_chance(),
         }
     }
 }

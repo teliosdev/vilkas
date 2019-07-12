@@ -1,49 +1,9 @@
-use super::{MemStorage, MemStorageConfiguration};
 use crate::storage::{Item, ItemStorage};
-use rand::distributions::Alphanumeric;
 use rand::seq::SliceRandom;
-use rand::Rng;
-use std::path::PathBuf;
 use uuid::Uuid;
 
-#[derive(Debug, Clone)]
-struct TemporaryFileWrap<T>(T, PathBuf);
-
-impl<T> Drop for TemporaryFileWrap<T> {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.1);
-    }
-}
-
-impl<T> std::ops::Deref for TemporaryFileWrap<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> std::ops::DerefMut for TemporaryFileWrap<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-fn create_mem_storage() -> TemporaryFileWrap<MemStorage> {
-    let name = ::rand::thread_rng()
-        .sample_iter(Alphanumeric)
-        .take(16)
-        .collect::<String>();
-    let file = std::env::temp_dir().join(name);
-    let _ = std::fs::create_dir(&file).unwrap();
-    let mut config = MemStorageConfiguration::default();
-    config.path = file.clone();
-    let storage: MemStorage = config.into();
-    storage
-        .initialize()
-        .expect("could not initialize databases");
-
-    TemporaryFileWrap(storage, file)
-}
+mod wrap;
+pub use self::wrap::TemporaryFileWrap;
 
 fn create_item() -> Item {
     Item {
@@ -56,13 +16,13 @@ fn create_item() -> Item {
 
 #[test]
 fn it_loads() {
-    let storage = create_mem_storage();
+    let storage = TemporaryFileWrap::load();
     std::mem::drop(storage);
 }
 
 #[test]
 fn it_stores_an_item() {
-    let storage = create_mem_storage();
+    let storage = TemporaryFileWrap::load();
     let item = create_item();
     storage.items_insert(&item).expect("could not insert item");
     let loaded = storage
@@ -74,7 +34,7 @@ fn it_stores_an_item() {
 
 #[test]
 fn it_handles_near_requests() {
-    let storage = create_mem_storage();
+    let storage = TemporaryFileWrap::load();
     let item = create_item();
     let near = create_item();
     storage.items_insert(&item).expect("could not insert item");
@@ -93,7 +53,7 @@ fn it_handles_near_requests() {
 
 #[test]
 fn it_calculates_near_items() {
-    let storage = create_mem_storage();
+    let storage = TemporaryFileWrap::load();
     let base = create_item();
     let items = (0..64).map(|_| create_item()).collect::<Vec<_>>();
     storage.items_insert(&base).expect("could not insert item");

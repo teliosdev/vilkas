@@ -6,7 +6,7 @@ use crate::learn::Algorithm;
 
 use super::Vector;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Parameters<T: Float + Default + 'static> {
     learning_rate: T,
     gradient_cap: T,
@@ -79,6 +79,19 @@ impl<T: Float + Default + 'static> Parameters<T> {
             loss: T::infinity(),
             previous: None,
             weights: Vector::empty(),
+            gradients: Vector::empty(),
+        }
+    }
+
+    pub fn build_with_weights(self, weights: Vector<T>) -> LogisticRegression<T> {
+        let learning_rate = Some(self.learning_rate);
+
+        LogisticRegression {
+            parameters: self,
+            learning_rate,
+            loss: T::infinity(),
+            previous: None,
+            weights,
             gradients: Vector::empty(),
         }
     }

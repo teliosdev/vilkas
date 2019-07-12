@@ -10,7 +10,7 @@ pub struct Request {
     #[serde(alias = "p")]
     pub part: String,
     #[serde(alias = "u")]
-    pub user: Uuid,
+    pub user: String,
     #[serde(alias = "t")]
     pub current: Uuid,
     #[serde(alias = "w")]

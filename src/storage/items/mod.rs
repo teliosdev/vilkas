@@ -30,7 +30,7 @@ pub trait ItemStorage: Sealed {
     fn find_item(&self, part: &str, item: Uuid) -> Result<Option<Item>, Error>;
     fn find_items<Items>(&self, part: &str, items: Items) -> Result<Vec<Option<Item>>, Error>
     where
-        Items: Iterator<Item = Uuid>;
+        Items: IntoIterator<Item = Uuid>;
     fn find_items_near(&self, part: &str, item: Uuid) -> Result<ItemList, Error>;
     fn find_items_top(&self, part: &str, scope: TimeScope) -> Result<ItemList, Error>;
     fn find_items_popular(&self, part: &str, scope: TimeScope) -> Result<ItemList, Error>;
@@ -39,8 +39,8 @@ pub trait ItemStorage: Sealed {
     fn items_add_near(&self, part: &str, item: Uuid, near: Uuid) -> Result<(), Error>;
     fn items_add_bulk_near<Inner, Bulk>(&self, part: &str, bulk: Bulk) -> Result<(), Error>
     where
-        Inner: Iterator<Item = Uuid>,
-        Bulk: Iterator<Item = (Uuid, Inner)>,
+        Inner: IntoIterator<Item = Uuid>,
+        Bulk: IntoIterator<Item = (Uuid, Inner)>,
     {
         for (item, nears) in bulk {
             for near in nears {

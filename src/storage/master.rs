@@ -90,6 +90,17 @@ impl ModelStorage for MasterStorage {
             storage.model_activity_choose(part, id, chosen)
         )
     }
+
+    fn model_activity_pluck(&self) -> Result<Vec<Activity>, Error> {
+        expand_storage!(self, storage, storage.model_activity_pluck())
+    }
+
+    fn model_activity_delete_all<'p, Ids>(&self, id: Ids) -> Result<(), Error>
+    where
+        Ids: IntoIterator<Item = (&'p str, Uuid)>,
+    {
+        expand_storage!(self, storage, storage.model_activity_delete_all(id))
+    }
 }
 
 #[allow(unused_variables)]
@@ -100,7 +111,7 @@ impl ItemStorage for MasterStorage {
 
     fn find_items<Items>(&self, part: &str, items: Items) -> Result<Vec<Option<Item>>, Error>
     where
-        Items: Iterator<Item = Uuid>,
+        Items: IntoIterator<Item = Uuid>,
     {
         expand_storage!(self, storage, storage.find_items(part, items))
     }
@@ -127,8 +138,8 @@ impl ItemStorage for MasterStorage {
 
     fn items_add_bulk_near<Inner, Bulk>(&self, part: &str, bulk: Bulk) -> Result<(), Error>
     where
-        Inner: Iterator<Item = Uuid>,
-        Bulk: Iterator<Item = (Uuid, Inner)>,
+        Inner: IntoIterator<Item = Uuid>,
+        Bulk: IntoIterator<Item = (Uuid, Inner)>,
     {
         expand_storage!(self, storage, storage.items_add_bulk_near(part, bulk))
     }

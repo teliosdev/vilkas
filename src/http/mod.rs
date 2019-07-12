@@ -1,7 +1,7 @@
 use crate::recommend::Core;
-use crate::storage::DefaultStorage;
+use crate::storage::{DefaultStorage, Storage};
 use config::Config;
-use rouille::{router, start_server, Response};
+use rouille::{start_server, Request, Response};
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -9,37 +9,41 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 mod api;
+#[cfg(test)]
+mod tests;
 
 pub fn run(config: Config) -> ! {
     let addr = config
         .get_str("http.addr")
         .unwrap_or_else(|_| "0.0.0.0:3000".into());
     let context = Context::load(config);
+    Core::train_loop(&context.core);
     eprintln!("listening on address {}...", addr);
-    start_server(addr, move |request| {
-        router!(request,
-            (POST)["/api/recommend"] => {  api::recommend::apply(request, &context) },
-            (GET)["/api/view"] => { api::view::apply_get(request, &context) },
-            (POST)["/api/view"] => { api::view::apply_post(request, &context) },
-            _ => { Response::empty_404() }
-        )
-    })
+    start_server(addr, move |request| handle_request(request, &context))
+}
+
+fn handle_request(request: &Request, context: &Context<impl Storage>) -> Response {
+    router!(request,
+        (POST)["/api/recommend"] => {  api::recommend::apply(request, &context) },
+        (GET)["/api/view"] => { api::view::apply_get(request, &context) },
+        (POST)["/api/view"] => { api::view::apply_post(request, &context) },
+        (POST)["/api/items"] => { api::items::create::apply(request, &context) },
+        (GET)["/api/items"] => { api::items::show::apply(request, &context) },
+        _ => { Response::empty_404() })
 }
 
 #[derive(Debug)]
-pub struct Context {
-    config: Config,
-    core: Core<DefaultStorage>,
-    storage: Arc<DefaultStorage>,
+pub struct Context<T: Storage + 'static> {
+    core: Arc<Core<T>>,
+    storage: Arc<T>,
     last: LastView,
 }
 
-impl Context {
-    pub fn load(config: Config) -> Context {
+impl Context<DefaultStorage> {
+    pub fn load(config: Config) -> Context<DefaultStorage> {
         let storage = Arc::new(DefaultStorage::load(&config));
-        let core = Core::of(&storage, &config);
+        let core = Arc::new(Core::of(&storage, &config));
         Context {
-            config,
             core,
             storage,
             last: LastView::default(),
@@ -84,7 +88,11 @@ impl LastView {
         let count = self.count.fetch_add(1, Ordering::SeqCst);
         let mut prev = self.average.load(Ordering::SeqCst);
         loop {
-            let new = (prev * (count - 1) + since) / count;
+            let new = if count == 0 {
+                since
+            } else {
+                (prev * count + since) / count
+            };
 
             match self
                 .average
