@@ -55,7 +55,7 @@ fn it_inserts_items() {
         meta: Default::default(),
     };
     let insert_request = request("POST", "/api/items", Some(&item), vec![]);
-    let response = handle_request(&insert_request, &context);
+    let response = handle_request(&insert_request, &context).expect("could not perform request");
     assert_eq!(response.status_code, 204);
     let show_request = request(
         "GET",
@@ -63,7 +63,7 @@ fn it_inserts_items() {
         None as Option<&()>,
         vec![],
     );
-    let mut response = handle_request(&show_request, &context);
+    let mut response = handle_request(&show_request, &context).expect("could not perform request");
     assert_eq!(response.status_code, 200);
     let data = read_all::<Value>(&mut response);
     let data = serde_json::from_value::<Item>(data["result"].clone()).unwrap();
@@ -100,7 +100,7 @@ fn it_generates_recommendations() {
     for item in items.iter() {
         view.item = item.id;
         let request = request("POST", "/api/view", Some(&view), vec![]);
-        let response = handle_request(&request, &context);
+        let response = handle_request(&request, &context).expect("could not perform request");
         assert_eq!(response.status_code, 204);
     }
 
@@ -113,7 +113,7 @@ fn it_generates_recommendations() {
     };
 
     let request = request("POST", "/api/recommend", Some(&recreq), vec![]);
-    let mut response = handle_request(&request, &context);
+    let mut response = handle_request(&request, &context).expect("could not perform request");
     assert_eq!(response.status_code, 200);
     let data = read_all::<RecommendResponse>(&mut response);
     assert_eq!(data.items.len(), 5);

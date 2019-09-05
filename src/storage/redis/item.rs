@@ -212,6 +212,7 @@ where
     }
     pipe.incr(key.nmods_key(), incby as i64)
         .query(client)
+        .map(|v: Vec<i64>| v.get(0).cloned().unwrap_or_default() as u64)
         .map_err(Error::from)
 }
 

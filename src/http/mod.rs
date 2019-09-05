@@ -1,6 +1,7 @@
 use crate::recommend::Core;
 use crate::storage::{DefaultStorage, Store};
 use config::Config;
+use failure::Error;
 use rouille::{start_server, Request, Response};
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -19,10 +20,23 @@ pub fn run(config: Config) -> ! {
     let context = Context::load(config);
     Core::train_loop(&context.core);
     eprintln!("listening on address {}...", addr);
-    start_server(addr, move |request| handle_request(request, &context))
+    start_server(addr, move |request| handle(request, &context))
 }
 
-fn handle_request(request: &Request, context: &Context<impl Store>) -> Response {
+fn handle(request: &Request, context: &Context<impl Store>) -> Response {
+    debug!("{} {}", request.method(), request.url());
+    match handle_request(request, context) {
+        Ok(r) => r,
+        Err(e) => {
+            error!("received error during request: {}", e);
+            error!("{:#?}", e);
+
+            Response::json(&json!({ "_err": true })).with_status_code(500)
+        }
+    }
+}
+
+fn handle_request(request: &Request, context: &Context<impl Store>) -> Result<Response, Error> {
     router!(request,
         (POST)["/api/recommend"] => {  api::recommend::apply(request, &context) },
         (GET)["/api/view"] => { api::view::apply_get(request, &context) },
@@ -32,7 +46,7 @@ fn handle_request(request: &Request, context: &Context<impl Store>) -> Response 
         (GET)["/api/items"] => { api::items::show::apply(request, &context) },
         (GET)["/api/model/{name}", name: String] => { api::model::show(request, name, context) },
         (POST)["/api/model/{name}/train", name: String] => { api::model::train(request, name, context) },
-        _ => { Response::empty_404() })
+        _ => { Ok(Response::empty_404()) })
 }
 
 #[derive(Debug)]

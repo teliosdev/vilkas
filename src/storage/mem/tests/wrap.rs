@@ -86,6 +86,10 @@ impl<T: Store> ItemStore for TemporaryFileWrap<T> {
         self.0.items_insert(item)
     }
 
+    fn items_delete(&self, part: &str, item: Uuid) -> Result<(), Error> {
+        self.0.items_delete(part, item)
+    }
+
     fn items_add_near(&self, part: &str, item: Uuid, near: Uuid) -> Result<(), Error> {
         self.0.items_add_near(part, item, near)
     }

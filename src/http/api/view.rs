@@ -16,7 +16,7 @@ pub struct ViewRequest {
     pub actid: Option<Uuid>,
 }
 
-pub fn apply_get(request: &Request, context: &Context<impl Store>) -> Response {
+pub fn apply_get(request: &Request, context: &Context<impl Store>) -> Result<Response, Error> {
     let part = request.get_param("part").or_else(|| request.get_param("p"));
     let user = request.get_param("user").or_else(|| request.get_param("u"));
     let item = request.get_param("item").or_else(|| request.get_param("i"));
@@ -36,16 +36,15 @@ pub fn apply_get(request: &Request, context: &Context<impl Store>) -> Response {
                 actid,
             };
             apply(request, &view, context)
-                .unwrap_or_else(|_| Response::empty_204().with_status_code(500))
         }
 
-        None => Response::empty_400(),
+        None => Ok(Response::empty_400()),
     }
 }
 
-pub fn apply_post(request: &Request, context: &Context<impl Store>) -> Response {
-    let view: ViewRequest = try_or_400!(rouille::input::json_input(request));
-    apply(request, &view, context).unwrap_or_else(|_| Response::empty_204().with_status_code(500))
+pub fn apply_post(request: &Request, context: &Context<impl Store>) -> Result<Response, Error> {
+    let view: ViewRequest = rouille::input::json_input(request)?;
+    apply(request, &view, context)
 }
 
 fn apply(
