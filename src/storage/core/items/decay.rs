@@ -114,7 +114,7 @@ impl ItemListDecay {
                 .map(|(id, count)| (id, self.func.decay(count, since as f64 / scope.half_life())))
                 .take(self.max_count as usize)
                 .collect();
-            list.nmods = 0;
+            list.nmods = list.items.len() as u64;
             list.epoch = now;
         }
     }

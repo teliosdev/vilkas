@@ -1,5 +1,5 @@
 use crate::recommend::Core;
-use crate::storage::{DefaultStorage, Storage};
+use crate::storage::{DefaultStorage, Store};
 use config::Config;
 use rouille::{start_server, Request, Response};
 use std::sync::atomic::AtomicU64;
@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 mod api;
-#[cfg(test)]
+#[cfg(all(test, feature = "lmdb"))]
 mod tests;
 
 pub fn run(config: Config) -> ! {
@@ -22,18 +22,21 @@ pub fn run(config: Config) -> ! {
     start_server(addr, move |request| handle_request(request, &context))
 }
 
-fn handle_request(request: &Request, context: &Context<impl Storage>) -> Response {
+fn handle_request(request: &Request, context: &Context<impl Store>) -> Response {
     router!(request,
         (POST)["/api/recommend"] => {  api::recommend::apply(request, &context) },
         (GET)["/api/view"] => { api::view::apply_get(request, &context) },
         (POST)["/api/view"] => { api::view::apply_post(request, &context) },
         (POST)["/api/items"] => { api::items::create::apply(request, &context) },
+        (DELETE)["/api/items"] => { api::items::delete::apply(request, &context) },
         (GET)["/api/items"] => { api::items::show::apply(request, &context) },
+        (GET)["/api/model/{name}", name: String] => { api::model::show(request, name, context) },
+        (POST)["/api/model/{name}/train", name: String] => { api::model::train(request, name, context) },
         _ => { Response::empty_404() })
 }
 
 #[derive(Debug)]
-pub struct Context<T: Storage + 'static> {
+pub struct Context<T: Store + 'static> {
     core: Arc<Core<T>>,
     storage: Arc<T>,
     last: LastView,

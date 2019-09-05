@@ -2,12 +2,12 @@ use super::ext::RecordExt;
 use super::SpikeStorage;
 use crate::storage::spike::read_modify_write;
 use crate::storage::UserData;
-use crate::storage::UserStorage;
+use crate::storage::UserStore;
 use aerospike::Bin;
 use failure::Error;
 use uuid::Uuid;
 
-impl UserStorage for SpikeStorage {
+impl UserStore for SpikeStorage {
     fn find_user(&self, part: &str, id: &str) -> Result<UserData, Error> {
         let key = self.keys.user_key(part, id);
         self.get(&key, ["data"])?

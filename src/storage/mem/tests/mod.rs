@@ -1,4 +1,4 @@
-use crate::storage::{Item, ItemStorage};
+use crate::storage::{Item, ItemStore};
 use rand::seq::SliceRandom;
 use uuid::Uuid;
 

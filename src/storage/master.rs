@@ -1,11 +1,11 @@
-use super::items::{Item, ItemList, TimeScope};
+use super::core::items::{Item, ItemList, TimeScope};
 #[cfg(feature = "lmdb")]
 use super::mem::MemStorage;
+#[cfg(feature = "redis")]
+use super::redis::RedisStorage;
 #[cfg(feature = "aerospike")]
 use super::spike::SpikeStorage;
-use super::{
-    Activity, FeatureList, ItemStorage, ModelStorage, Sealed, Storage, UserData, UserStorage,
-};
+use super::{Activity, FeatureList, ItemStore, ModelStore, Sealed, Store, UserData, UserStore};
 use config::Config;
 
 use failure::Error;
@@ -16,6 +16,8 @@ pub enum MasterStorage {
     Spike(SpikeStorage),
     #[cfg(feature = "lmdb")]
     Memory(MemStorage),
+    #[cfg(feature = "redis")]
+    Redis(RedisStorage),
 }
 
 impl MasterStorage {
@@ -28,6 +30,8 @@ impl MasterStorage {
             "aerospike" => MasterStorage::Spike(SpikeStorage::load(config)),
             #[cfg(feature = "lmdb")]
             "memory" => MasterStorage::Memory(MemStorage::load(config)),
+            #[cfg(feature = "redis")]
+            "redis" => MasterStorage::Redis(RedisStorage::load(config)),
 
             store => panic!("unknown storage type {}", store),
         }
@@ -42,16 +46,18 @@ macro_rules! expand_storage {
             MasterStorage::Spike($v) => $act,
             #[cfg(feature = "lmdb")]
             MasterStorage::Memory($v) => $act,
+            #[cfg(feature = "redis")]
+            MasterStorage::Redis($v) => $act,
             _ => unreachable!(),
         }
     };
 }
 
 impl Sealed for MasterStorage {}
-impl Storage for MasterStorage {}
+impl Store for MasterStorage {}
 
 #[allow(unused_variables)]
-impl UserStorage for MasterStorage {
+impl UserStore for MasterStorage {
     fn find_user(&self, part: &str, id: &str) -> Result<UserData, Error> {
         expand_storage!(self, storage, storage.find_user(part, id))
     }
@@ -62,7 +68,7 @@ impl UserStorage for MasterStorage {
 }
 
 #[allow(unused_variables)]
-impl ModelStorage for MasterStorage {
+impl ModelStore for MasterStorage {
     fn set_default_model(&self, list: FeatureList) -> Result<(), Error> {
         expand_storage!(self, storage, storage.set_default_model(list))
     }
@@ -104,7 +110,7 @@ impl ModelStorage for MasterStorage {
 }
 
 #[allow(unused_variables)]
-impl ItemStorage for MasterStorage {
+impl ItemStore for MasterStorage {
     fn find_item(&self, part: &str, item: Uuid) -> Result<Option<Item>, Error> {
         expand_storage!(self, storage, storage.find_item(part, item))
     }
@@ -128,8 +134,16 @@ impl ItemStorage for MasterStorage {
         expand_storage!(self, storage, storage.find_items_popular(part, scope))
     }
 
+    fn find_items_recent(&self, part: &str) -> Result<ItemList, Error> {
+        expand_storage!(self, storage, storage.find_items_recent(part))
+    }
+
     fn items_insert(&self, item: &Item) -> Result<(), Error> {
         expand_storage!(self, storage, storage.items_insert(item))
+    }
+
+    fn items_delete(&self, part: &str, item: Uuid) -> Result<(), Error> {
+        expand_storage!(self, storage, storage.items_delete(part, item))
     }
 
     fn items_add_near(&self, part: &str, item: Uuid, near: Uuid) -> Result<(), Error> {

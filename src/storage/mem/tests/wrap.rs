@@ -1,8 +1,8 @@
 use crate::storage::mem::{MemStorage, MemStorageConfiguration};
 use crate::storage::sealed::Sealed;
 use crate::storage::{
-    Activity, FeatureList, Item, ItemList, ItemStorage, ModelStorage, Storage, TimeScope, UserData,
-    UserStorage,
+    Activity, FeatureList, Item, ItemList, ItemStore, ModelStore, Store, TimeScope, UserData,
+    UserStore,
 };
 use failure::Error;
 use rand::distributions::Alphanumeric;
@@ -51,10 +51,10 @@ impl<T> std::ops::DerefMut for TemporaryFileWrap<T> {
     }
 }
 
-impl<T: Storage> Sealed for TemporaryFileWrap<T> {}
-impl<T: Storage> Storage for TemporaryFileWrap<T> {}
+impl<T: Store> Sealed for TemporaryFileWrap<T> {}
+impl<T: Store> Store for TemporaryFileWrap<T> {}
 
-impl<T: Storage> ItemStorage for TemporaryFileWrap<T> {
+impl<T: Store> ItemStore for TemporaryFileWrap<T> {
     fn find_item(&self, part: &str, item: Uuid) -> Result<Option<Item>, Error> {
         self.0.find_item(part, item)
     }
@@ -76,6 +76,10 @@ impl<T: Storage> ItemStorage for TemporaryFileWrap<T> {
 
     fn find_items_popular(&self, part: &str, scope: TimeScope) -> Result<ItemList, Error> {
         self.0.find_items_popular(part, scope)
+    }
+
+    fn find_items_recent(&self, part: &str) -> Result<ItemList, Error> {
+        self.0.find_items_recent(part)
     }
 
     fn items_insert(&self, item: &Item) -> Result<(), Error> {
@@ -103,7 +107,7 @@ impl<T: Storage> ItemStorage for TemporaryFileWrap<T> {
     }
 }
 
-impl<T: Storage> ModelStorage for TemporaryFileWrap<T> {
+impl<T: Store> ModelStore for TemporaryFileWrap<T> {
     fn set_default_model(&self, list: FeatureList<'_>) -> Result<(), Error> {
         self.0.set_default_model(list)
     }
@@ -140,7 +144,7 @@ impl<T: Storage> ModelStorage for TemporaryFileWrap<T> {
     }
 }
 
-impl<T: Storage> UserStorage for TemporaryFileWrap<T> {
+impl<T: Store> UserStore for TemporaryFileWrap<T> {
     fn find_user(&self, part: &str, id: &str) -> Result<UserData, Error> {
         self.0.find_user(part, id)
     }

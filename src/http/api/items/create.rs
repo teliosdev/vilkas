@@ -1,8 +1,8 @@
 use crate::http::Context;
-use crate::storage::{Item, Storage};
+use crate::storage::{Item, Store};
 use rouille::{Request, Response};
 
-pub fn apply(request: &Request, context: &Context<impl Storage>) -> Response {
+pub fn apply(request: &Request, context: &Context<impl Store>) -> Response {
     eprintln!("attempting to load item...");
     let item: Item = try_or_400!(rouille::input::json_input(request));
     eprintln!("item loaded: {:?}", item);

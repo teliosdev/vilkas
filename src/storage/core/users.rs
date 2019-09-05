@@ -1,7 +1,7 @@
 use failure::Error;
 use uuid::Uuid;
 
-use super::Sealed;
+use crate::storage::sealed::Sealed;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserData {
@@ -18,7 +18,7 @@ impl UserData {
     }
 }
 
-pub trait UserStorage: Sealed {
+pub trait UserStore: Sealed {
     fn find_user(&self, part: &str, id: &str) -> Result<UserData, Error>;
     fn user_push_history(&self, part: &str, id: &str, history: Uuid) -> Result<(), Error>;
 }

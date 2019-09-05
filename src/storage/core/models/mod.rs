@@ -1,6 +1,6 @@
 pub use self::example::{BasicExample, Example, ListPosition};
 pub use self::list::FeatureList;
-use super::Sealed;
+use crate::storage::sealed::Sealed;
 use failure::Error;
 use uuid::Uuid;
 
@@ -16,7 +16,7 @@ pub struct Activity {
     pub chosen: Option<Vec<Uuid>>,
 }
 
-pub trait ModelStorage: Sealed {
+pub trait ModelStore: Sealed {
     fn set_default_model(&self, list: FeatureList<'_>) -> Result<(), Error>;
     fn find_default_model(&self) -> Result<FeatureList<'static>, Error>;
     fn find_model(&self, part: &str) -> Result<Option<FeatureList<'static>>, Error>;

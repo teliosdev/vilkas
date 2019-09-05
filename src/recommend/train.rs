@@ -2,10 +2,10 @@ use crate::learn::logistic::LogisticRegression;
 use crate::learn::metrics::roc_auc_score;
 use crate::learn::{Algorithm, Vector};
 use crate::recommend::{Core, PartConfig};
-use crate::storage::{Activity, FeatureList, Storage};
+use crate::storage::{Activity, FeatureList, Store};
 use failure::Error;
 
-impl<T: Storage + 'static> Core<T> {
+impl<T: Store + 'static> Core<T> {
     pub fn load_train(&self) -> Result<(), Error> {
         let activities = self.storage.model_activity_pluck()?;
         self.train(&activities)?;
@@ -78,7 +78,7 @@ fn convert_model_examples(
     (model, features)
 }
 
-fn complete_generate_features<T: Storage + 'static>(
+fn complete_generate_features<T: Store + 'static>(
     core: &Core<T>,
     activities: &[Activity],
     list: &mut FeatureList<'static>,

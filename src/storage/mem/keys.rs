@@ -1,4 +1,4 @@
-use crate::storage::items::TimeScope;
+use crate::storage::TimeScope;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -45,6 +45,10 @@ impl Keys {
 
     pub(super) fn item_near_key(&self, part: &str, item: Uuid) -> String {
         format!("item:list:near:{}:{}", part, item)
+    }
+
+    pub(super) fn item_recent_key(&self, part: &str) -> String {
+        format!("item:list:recent:{}", part)
     }
 
     pub(super) fn item_top_key(&self, part: &str, scope: TimeScope) -> String {

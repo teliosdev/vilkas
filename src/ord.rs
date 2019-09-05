@@ -64,5 +64,5 @@ mod tests {
         println!("precheck");
         sort_cached_float(&mut floats, |a| *a);
         assert_eq!(floats, vec![10.0, 5.0, 1.0]);
-;    }
+    }
 }

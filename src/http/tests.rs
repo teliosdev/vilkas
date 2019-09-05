@@ -1,6 +1,6 @@
 use crate::http::{handle_request, Context};
 use crate::recommend::Core;
-use crate::storage::{Item, ItemStorage, Storage};
+use crate::storage::{Item, ItemStore, Store};
 use rouille::{Request, Response, ResponseBody};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -8,7 +8,7 @@ use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
 
-fn context() -> Context<impl Storage> {
+fn context() -> Context<impl Store> {
     let storage = crate::storage::mem::tests::TemporaryFileWrap::load();
     let storage = Arc::new(storage);
     let core = Core {
@@ -116,7 +116,7 @@ fn it_generates_recommendations() {
     let mut response = handle_request(&request, &context);
     assert_eq!(response.status_code, 200);
     let data = read_all::<RecommendResponse>(&mut response);
-    assert_eq!(data.result.len(), 5);
+    assert_eq!(data.items.len(), 5);
     dbg!(data);
     assert!(false);
 }

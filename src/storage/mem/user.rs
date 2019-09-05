@@ -1,10 +1,10 @@
 use super::ext::*;
 use super::MemStorage;
-use crate::storage::users::{UserData, UserStorage};
+use crate::storage::core::users::{UserData, UserStore};
 use failure::Error;
 use uuid::Uuid;
 
-impl UserStorage for MemStorage {
+impl UserStore for MemStorage {
     fn find_user(&self, part: &str, id: &str) -> Result<UserData, Error> {
         self.read_transaction(self.keys.user_database(), |txn, db| {
             let key = self.keys.user_key(part, id);

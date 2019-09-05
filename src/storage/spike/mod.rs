@@ -1,7 +1,7 @@
 use self::ext::ResultExt;
 use self::keys::Keys;
 use super::items::{ItemListDecay, NearListDecay};
-use super::{ModelStorage, Sealed, Storage};
+use super::{ModelStore, Sealed, Store};
 use aerospike::errors::{Error as AerospikeError, ErrorKind as AerospikeErrorKind};
 use aerospike::{
     Bin, Bins, Client, ClientPolicy, GenerationPolicy, Key, ReadPolicy, Record, ResultCode,
@@ -159,7 +159,7 @@ impl std::fmt::Debug for SpikeStorage {
 
 impl Sealed for SpikeStorage {}
 
-impl Storage for SpikeStorage {}
+impl Store for SpikeStorage {}
 
 fn read_modify_write<F>(
     client: &Client,

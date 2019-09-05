@@ -1,12 +1,12 @@
 use super::ext::*;
 use super::MemStorage;
-use crate::storage::{Item, ItemList, ItemStorage, TimeScope};
+use crate::storage::{Item, ItemList, ItemStore, TimeScope};
 use failure::Error;
 use lmdb::{Database, RwTransaction};
 
 use uuid::Uuid;
 
-impl ItemStorage for MemStorage {
+impl ItemStore for MemStorage {
     fn find_item(&self, part: &str, item: Uuid) -> Result<Option<Item>, Error> {
         self.read_transaction(self.keys.item_database(), |txn, db| {
             let key = self.keys.item_key(part, item);
@@ -56,10 +56,33 @@ impl ItemStorage for MemStorage {
         })
     }
 
+    fn find_items_recent(&self, part: &str) -> Result<ItemList, Error> {
+        self.read_transaction(self.keys.item_database(), |txn, db| {
+            let key = self.keys.item_recent_key(part);
+            let result = txn.deget::<ItemList, _>(db, &key)?.unwrap_or_default();
+            Ok(result)
+        })
+    }
+
     fn items_insert(&self, item: &Item) -> Result<(), Error> {
         self.write_transaction(self.keys.item_database(), |txn, db| {
             let key = self.keys.item_key(&item.part, item.id);
-            txn.serput(db, &key, item)
+            txn.serput(db, &key, item)?;
+            let key = self.keys.item_recent_key(&item.part);
+            let mut list = txn.deget::<ItemList, _>(db, &key)?.unwrap_or_default();
+            list.items = std::iter::once((item.id, 1.0))
+                .chain(list.items.into_iter())
+                .take(self.recent_list_length as usize)
+                .collect::<Vec<_>>();
+            txn.serput(db, &key, &list)
+        })
+    }
+
+    fn items_delete(&self, part: &str, item: Uuid) -> Result<(), Error> {
+        self.write_transaction(self.keys.item_database(), |txn, db| {
+            let key = self.keys.item_key(part, item);
+            txn.del(db, &key, None)?;
+            Ok(())
         })
     }
 

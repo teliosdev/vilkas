@@ -1,12 +1,12 @@
 use super::ext::*;
 use super::MemStorage;
-use crate::storage::models::*;
+use crate::storage::core::models::*;
 use failure::Error;
 use lmdb::{Database, RwTransaction};
 use std::collections::VecDeque;
 use uuid::Uuid;
 
-impl ModelStorage for MemStorage {
+impl ModelStore for MemStorage {
     fn set_default_model(&self, list: FeatureList) -> Result<(), Error> {
         self.write_transaction(self.keys.model_database(), |txn, db| {
             let key = self.keys.default_model_key();

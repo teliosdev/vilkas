@@ -1,5 +1,5 @@
 use super::ext::RecordExt;
-use super::ModelStorage;
+use super::ModelStore;
 use super::SpikeStorage;
 use crate::storage::models::Activity;
 use crate::storage::spike::ext::{ResultExt, ValueExt};
@@ -10,7 +10,7 @@ use aerospike::{
 use failure::{Error, SyncFailure};
 use uuid::Uuid;
 
-impl ModelStorage for SpikeStorage {
+impl ModelStore for SpikeStorage {
     fn set_default_model(&self, list: FeatureList<'_>) -> Result<(), Error> {
         let key = self.keys.default_model_key();
         let bin = bincode::serialize(&list)?;

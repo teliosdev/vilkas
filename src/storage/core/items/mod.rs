@@ -26,7 +26,7 @@ pub struct ItemList {
     pub epoch: u128,
 }
 
-pub trait ItemStorage: Sealed {
+pub trait ItemStore: Sealed {
     fn find_item(&self, part: &str, item: Uuid) -> Result<Option<Item>, Error>;
     fn find_items<Items>(&self, part: &str, items: Items) -> Result<Vec<Option<Item>>, Error>
     where
@@ -34,8 +34,10 @@ pub trait ItemStorage: Sealed {
     fn find_items_near(&self, part: &str, item: Uuid) -> Result<ItemList, Error>;
     fn find_items_top(&self, part: &str, scope: TimeScope) -> Result<ItemList, Error>;
     fn find_items_popular(&self, part: &str, scope: TimeScope) -> Result<ItemList, Error>;
+    fn find_items_recent(&self, part: &str) -> Result<ItemList, Error>;
 
     fn items_insert(&self, item: &Item) -> Result<(), Error>;
+    fn items_delete(&self, part: &str, item: Uuid) -> Result<(), Error>;
     fn items_add_near(&self, part: &str, item: Uuid, near: Uuid) -> Result<(), Error>;
     fn items_add_bulk_near<Inner, Bulk>(&self, part: &str, bulk: Bulk) -> Result<(), Error>
     where

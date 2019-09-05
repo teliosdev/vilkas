@@ -1,5 +1,5 @@
 use crate::http::Context;
-use crate::storage::{Storage, UserData};
+use crate::storage::{Store, UserData};
 use failure::Error;
 use rouille::{Request, Response};
 use uuid::Uuid;
@@ -16,7 +16,7 @@ pub struct ViewRequest {
     pub actid: Option<Uuid>,
 }
 
-pub fn apply_get(request: &Request, context: &Context<impl Storage>) -> Response {
+pub fn apply_get(request: &Request, context: &Context<impl Store>) -> Response {
     let part = request.get_param("part").or_else(|| request.get_param("p"));
     let user = request.get_param("user").or_else(|| request.get_param("u"));
     let item = request.get_param("item").or_else(|| request.get_param("i"));
@@ -43,7 +43,7 @@ pub fn apply_get(request: &Request, context: &Context<impl Storage>) -> Response
     }
 }
 
-pub fn apply_post(request: &Request, context: &Context<impl Storage>) -> Response {
+pub fn apply_post(request: &Request, context: &Context<impl Store>) -> Response {
     let view: ViewRequest = try_or_400!(rouille::input::json_input(request));
     apply(request, &view, context).unwrap_or_else(|_| Response::empty_204().with_status_code(500))
 }
@@ -51,7 +51,7 @@ pub fn apply_post(request: &Request, context: &Context<impl Storage>) -> Respons
 fn apply(
     _request: &Request,
     view: &ViewRequest,
-    context: &Context<impl Storage>,
+    context: &Context<impl Store>,
 ) -> Result<Response, Error> {
     let user = context.storage.find_user(&view.part, &view.user)?;
 
@@ -73,7 +73,7 @@ fn apply(
 fn calculate_near(
     view: &ViewRequest,
     user: &UserData,
-    context: &Context<impl Storage>,
+    context: &Context<impl Store>,
 ) -> Result<(), Error> {
     let nears = std::iter::once((
         view.item,
@@ -92,7 +92,7 @@ fn calculate_near(
 fn complete_activity(
     activity: Uuid,
     view: &ViewRequest,
-    context: &Context<impl Storage>,
+    context: &Context<impl Store>,
 ) -> Result<(), Error> {
     let chosen = [view.item];
     context

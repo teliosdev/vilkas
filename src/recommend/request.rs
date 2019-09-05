@@ -1,5 +1,5 @@
 use crate::recommend::Core;
-use crate::storage::{BasicExample, Example, Item, Storage, TimeScope};
+use crate::storage::{BasicExample, Example, Item, Store, TimeScope};
 use failure::Error;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
@@ -20,7 +20,7 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn current<T: Storage + 'static>(&self, core: &Core<T>) -> Result<Item, Error> {
+    pub fn current<T: Store + 'static>(&self, core: &Core<T>) -> Result<Item, Error> {
         core.storage
             .find_item(&self.part, self.current)
             .map(|item| {
@@ -33,7 +33,7 @@ impl Request {
             })
     }
 
-    pub fn examples<'t, T: Storage + 'static>(
+    pub fn examples<'t, T: Store + 'static>(
         &'t self,
         core: &Core<T>,
     ) -> Result<impl Iterator<Item = Example> + 't, Error> {
@@ -53,7 +53,7 @@ impl Request {
         Ok(iter)
     }
 
-    pub fn candidates<T: Storage>(&self, core: &Core<T>) -> Result<Vec<BasicExample>, Error> {
+    pub fn candidates<T: Store>(&self, core: &Core<T>) -> Result<Vec<BasicExample>, Error> {
         let max = core.config_for(&self.part).max_candidate_count;
         if let Some(list) = self.whitelist.as_ref() {
             return Ok(list
@@ -71,6 +71,13 @@ impl Request {
         for (i, (id, value)) in list.items.iter().cloned().enumerate() {
             candidate_list.mutate(id, |ex| {
                 ex.with_near((value, i as f64));
+            });
+        }
+
+        let list = storage.find_items_recent(&self.part)?;
+        for (i, (id, value)) in list.items.iter().cloned().enumerate() {
+            candidate_list.mutate(id, |ex| {
+                ex.with_recent((value, i as f64));
             });
         }
 
@@ -101,6 +108,7 @@ impl Request {
     }
 }
 
+#[derive(Debug)]
 struct CandidateList {
     map: HashMap<Uuid, BasicExample>,
     max: usize,

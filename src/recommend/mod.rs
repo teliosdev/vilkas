@@ -1,7 +1,7 @@
 pub use self::conf::PartConfig;
 pub use self::request::Request;
 use crate::learn::logistic::Parameters;
-use crate::storage::{Activity, BasicExample, Example, FeatureList, Storage};
+use crate::storage::{Activity, BasicExample, Example, FeatureList, Store};
 use config::Config;
 use failure::Error;
 use rand::Rng;
@@ -17,14 +17,14 @@ mod request;
 mod train;
 
 #[derive(Debug, Clone)]
-pub struct Core<T: Storage + 'static> {
+pub struct Core<T: Store + 'static> {
     pub storage: Arc<T>,
     pub parameters: Parameters<f64>,
     pub part_config: HashMap<String, PartConfig>,
     pub default_config: PartConfig,
 }
 
-impl<T: Storage + 'static> Core<T> {
+impl<T: Store + 'static> Core<T> {
     pub fn of(storage: &Arc<T>, config: &Config) -> Core<T> {
         let default_config = config.get("recommend.core.default").unwrap_or_default();
         let part_config = config.get("recommend.core.parts").unwrap_or_default();
@@ -40,11 +40,11 @@ impl<T: Storage + 'static> Core<T> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Response {
-    pub result: Vec<(Uuid, f64)>,
+    pub items: Vec<(Uuid, f64)>,
     pub id: Uuid,
 }
 
-impl<T: Storage + 'static> Core<T> {
+impl<T: Store + 'static> Core<T> {
     pub fn config_for<Q>(&self, name: &Q) -> &PartConfig
     where
         String: Borrow<Q>,
@@ -69,13 +69,13 @@ impl<T: Storage + 'static> Core<T> {
         let id = build_activity(self.storage.as_ref(), request, current, &scored[..])?;
 
         Ok(Response {
-            result: scored.into_iter().map(|(v, s)| (v.item.id, s)).collect(),
+            items: scored.into_iter().map(|(v, s)| (v.item.id, s)).collect(),
             id,
         })
     }
 }
 
-impl<T: Storage + Send + Sync + 'static> Core<T> {
+impl<T: Store + Send + Sync + 'static> Core<T> {
     pub fn train_loop(core: &Arc<Self>) -> std::thread::JoinHandle<()> {
         let core = core.clone();
         std::thread::spawn(move || loop {
@@ -91,7 +91,7 @@ impl<T: Storage + Send + Sync + 'static> Core<T> {
     }
 }
 
-fn pluck_model<T: Storage>(storage: &T, part: &str) -> Result<FeatureList<'static>, Error> {
+fn pluck_model<T: Store>(storage: &T, part: &str) -> Result<FeatureList<'static>, Error> {
     let model = storage.find_model(part)?;
     match model {
         Some(model) => Ok(model),
@@ -117,7 +117,7 @@ where
     })
 }
 
-fn build_activity<T: Storage>(
+fn build_activity<T: Store>(
     storage: &T,
     request: &Request,
     current: Example,

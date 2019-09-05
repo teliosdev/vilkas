@@ -1,18 +1,19 @@
-pub use self::items::{Item, ItemList, ItemStorage, TimeScope};
-pub use self::models::{Activity, BasicExample, Example, FeatureList, ModelStorage};
+pub use self::core::items::{Item, ItemList, ItemStore, TimeScope};
+pub use self::core::models::{Activity, BasicExample, Example, FeatureList, ModelStore};
+pub use self::core::users::{UserData, UserStore};
 use self::sealed::Sealed;
-pub use self::users::{UserData, UserStorage};
 
-mod items;
+mod core;
 mod master;
-mod models;
-mod users;
 
 #[cfg(feature = "lmdb")]
 pub mod mem;
+#[cfg(feature = "redis")]
+pub mod redis;
 #[cfg(feature = "aerospike")]
 pub mod spike;
-pub trait Storage: ItemStorage + UserStorage + ModelStorage + Sealed {}
+
+pub trait Store: ItemStore + UserStore + ModelStore + Sealed {}
 
 pub type DefaultStorage = master::MasterStorage;
 

@@ -20,6 +20,9 @@ impl Example {
         let list = self.basic.near.unwrap_or_default();
         feat.insert("list:near:value:ln1p", list.value.ln_1p());
         feat.insert("list:near:rank", list.rank);
+        let list = self.basic.recent.unwrap_or_default();
+        feat.insert("list:recent:value:ln1p", list.value.ln_1p());
+        feat.insert("list:recent:rank", list.rank);
 
         for scope in TimeScope::variants() {
             let list = self.basic.top.get(&scope).cloned().unwrap_or_default();
@@ -60,6 +63,7 @@ pub struct BasicExample {
     pub near: Option<ListPosition>,
     pub top: HashMap<TimeScope, ListPosition>,
     pub pop: HashMap<TimeScope, ListPosition>,
+    pub recent: Option<ListPosition>,
 }
 
 impl BasicExample {
@@ -69,6 +73,7 @@ impl BasicExample {
             near: None,
             top: Default::default(),
             pop: Default::default(),
+            recent: None,
         }
     }
 
@@ -78,6 +83,16 @@ impl BasicExample {
             Some(cur) if cur.rank > pos.rank => {}
             _ => self.near = Some(pos),
         }
+        self
+    }
+
+    pub fn with_recent(&mut self, pos: impl Into<ListPosition>) -> &mut Self {
+        let pos = pos.into();
+        match self.recent {
+            Some(cur) if cur.rank > pos.rank => {}
+            _ => self.recent = Some(pos),
+        }
+
         self
     }
 
@@ -97,6 +112,7 @@ impl BasicExample {
 
     pub fn importance(&self) -> f64 {
         let near = self.near.map(|v| v.value).unwrap_or_default().powi(2) + 1.0;
+        let recent = self.recent.map(|v| v.value).unwrap_or_default().powi(2) + 1.0;
         let tops = self
             .top
             .values()
@@ -109,6 +125,6 @@ impl BasicExample {
             .map(|v| v.value.powi(2))
             .fold(0.0, Add::add)
             + 1.0;
-        (near * tops * pops).sqrt() - 1.0
+        (near * recent * tops * pops).sqrt() - 1.0
     }
 }

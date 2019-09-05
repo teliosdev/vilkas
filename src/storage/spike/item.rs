@@ -1,13 +1,13 @@
 use crate::storage::spike::ext::{RecordExt, ValueExt};
 use crate::storage::spike::{read_modify_write, SpikeStorage};
-use crate::storage::{Item, ItemList, ItemStorage, TimeScope};
+use crate::storage::{Item, ItemList, ItemStore, TimeScope};
 use aerospike::{BatchPolicy, BatchRead, Bin, Bins, Client, Key, Record, Value, WritePolicy};
 use byteorder::{ByteOrder, LittleEndian};
 use failure::{Error, SyncFailure};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-impl ItemStorage for SpikeStorage {
+impl ItemStore for SpikeStorage {
     fn find_item(&self, part: &str, item: Uuid) -> Result<Option<Item>, Error> {
         let key = self.keys.item_key(part, item);
         self.get(&key, ["data"])?.deserialize_bin::<Item>("data")
@@ -259,10 +259,13 @@ where
             .into_iter()
             .map(|(k, v)| (Value::from(k.to_string()), Value::from(v)))
             .collect::<HashMap<_, _>>();
+        let mut epoch = [0u8; 16];
+        LittleEndian::write_u128(&mut epoch, list.epoch);
 
         Ok(vec![
             Bin::new("list", items.into()),
             Bin::new("nmods", 0.into()),
+            Bin::new("epoch", epoch.into()),
         ])
     })
 }

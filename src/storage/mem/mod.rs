@@ -1,6 +1,6 @@
 use self::keys::Keys;
-use super::items::{ItemListDecay, NearListDecay};
-use super::{Sealed, Storage};
+use super::core::items::{ItemListDecay, NearListDecay};
+use super::{Sealed, Store};
 use config::Config;
 use failure::Error;
 use lmdb::{
@@ -23,6 +23,7 @@ pub struct MemStorage {
     keys: Keys,
     user_history_length: usize,
     activity_list_length: u32,
+    recent_list_length: u32,
     near_decay: NearListDecay,
     top_decay: ItemListDecay,
     pop_decay: ItemListDecay,
@@ -48,6 +49,8 @@ pub struct MemStorageConfiguration {
     pub user_history_length: usize,
     #[serde(default = "defaults::activity_list_length")]
     pub activity_list_length: u32,
+    #[serde(default = "defaults::recent_list_length")]
+    pub recent_list_length: u32,
 }
 
 mod defaults {
@@ -64,6 +67,9 @@ mod defaults {
     pub const fn activity_list_length() -> u32 {
         256
     }
+    pub const fn recent_list_length() -> u32 {
+        256
+    }
 }
 
 impl Default for MemStorageConfiguration {
@@ -78,6 +84,7 @@ impl Default for MemStorageConfiguration {
             pop_decay: ItemListDecay::pop_default(),
             user_history_length: defaults::user_history_length(),
             activity_list_length: defaults::activity_list_length(),
+            recent_list_length: defaults::recent_list_length(),
         }
     }
 }
@@ -97,6 +104,7 @@ impl Into<MemStorage> for MemStorageConfiguration {
             keys: self.keys,
             user_history_length: self.user_history_length,
             activity_list_length: self.activity_list_length,
+            recent_list_length: self.recent_list_length,
             near_decay: self.near_decay,
             top_decay: self.top_decay,
             pop_decay: self.pop_decay,
@@ -165,4 +173,4 @@ impl MemStorage {
 
 impl Sealed for MemStorage {}
 
-impl Storage for MemStorage {}
+impl Store for MemStorage {}
