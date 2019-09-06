@@ -8,6 +8,7 @@ use failure::Error;
 impl<T: Store + 'static> Core<T> {
     pub fn load_train(&self) -> Result<(), Error> {
         let activities = self.storage.model_activity_pluck()?;
+        dbg!(&activities);
         self.train(&activities)?;
         self.storage
             .model_activity_delete_all(activities.iter().map(|act| (&act.part[..], act.id)))?;

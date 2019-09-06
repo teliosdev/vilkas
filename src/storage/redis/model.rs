@@ -76,19 +76,35 @@ impl ModelStore for RedisStorage {
             pipe.set_ex(&key, data, self.long_activity_lifetime as usize)
                 .ignore()
                 .query(conn)
-        })
-        .map_err(Error::from)
+        })?;
+
+        let activity: Activity = bincode::deserialize(&conn.get::<_, Vec<u8>>(&key)?)?;
+
+        let local_key = self.keys.activity_list_key(part);
+        let default_key = self.keys.default_activity_list_key();
+        push_activity_list(
+            &mut conn,
+            (local_key, default_key),
+            self.activity_list_lifetime,
+            self.activity_list_length,
+            part,
+            activity.id,
+        )?;
+
+        Ok(())
     }
 
     fn model_activity_pluck(&self) -> Result<Vec<Activity>, Error> {
         let mut conn = self.client.get_connection()?;
         let default_key = self.keys.default_activity_list_key();
-        let items: Vec<Vec<u8>> = redis::transaction(&mut conn, &[&default_key], |conn, pipe| {
-            pipe.lrange(&default_key, 0, -1)
-                .del(&default_key)
-                .ignore()
-                .query(conn)
-        })?;
+        let mut items: Vec<Vec<Vec<u8>>> =
+            redis::transaction(&mut conn, &[&default_key], |conn, pipe| {
+                pipe.lrange(&default_key, 0, -1)
+                    .del(&default_key)
+                    .ignore()
+                    .query(conn)
+            })?;
+        let items = items.pop().unwrap_or_default();
         let mut buf = Vec::with_capacity(items.len());
 
         for item in items {
@@ -124,7 +140,7 @@ fn push_activity_list(
     part: &str,
     id: Uuid,
 ) -> Result<(), Error> {
-    let content = bincode::serialize(&(part, id))?;
+    let content = bincode::serialize::<(&str, Uuid)>(&(part, id))?;
     redis::transaction(conn, &[&keys.0, &keys.1], |conn, pipe| {
         pipe.lpush(&keys.0, &content[..])
             .ignore()

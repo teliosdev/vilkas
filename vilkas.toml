@@ -5,4 +5,4 @@ type = "redis"
 path = "vilkas-storage"
 
 [storage.redis]
-url = "redis://:bI1KKie7tRWIgvHWiO1oiy3KlHq9urLY@redis.vei.sh/1"
+url = "redis://:bI1KKie7tRWIgvHWiO1oiy3KlHq9urLY@redis.vei.sh/3"

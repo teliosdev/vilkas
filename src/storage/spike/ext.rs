@@ -25,6 +25,7 @@ impl<T> ResultExt<T> for Result<T, AerospikeError> {
 pub(super) trait ValueExt {
     fn as_str(&self) -> Option<&str>;
     fn as_u64(&self) -> Option<u64>;
+    fn as_i64(&self) -> Option<i64>;
     fn as_f64(&self) -> Option<f64>;
     fn as_hash(&self) -> Option<&HashMap<Value, Value>>;
     fn as_list(&self) -> Option<&[Value]>;
@@ -41,7 +42,14 @@ impl ValueExt for Value {
     fn as_u64(&self) -> Option<u64> {
         match self {
             Value::UInt(v) => Some(*v),
-            Value::Int(i) if *i > 0 => Some(*i as u64),
+            Value::Int(i) => Some(*i as u64),
+            _ => None,
+        }
+    }
+    fn as_i64(&self) -> Option<i64> {
+        match self {
+            Value::UInt(v) => Some(*v as i64),
+            Value::Int(v) => Some(*v),
             _ => None,
         }
     }

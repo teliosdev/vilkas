@@ -276,7 +276,7 @@ where
     // Now, create the addition operation.  This will add the
     // number of keys above to the number of modifications of
     // the list, which...
-    let add_bin = Bin::new("nmods", Value::UInt(map_keys.len() as u64));
+    let add_bin = Bin::new("nmods", Value::Int(map_keys.len() as i64));
     ops.push(ops::add(&add_bin));
     // We then retrieve, and return.
     ops.push(ops::get_bin("nmods"));
@@ -323,7 +323,7 @@ where
 
         Ok(vec![
             Bin::new("list", items.into()),
-            Bin::new("nmods", 0.into()),
+            Bin::new("nmods", 0i64.into()),
             Bin::new("epoch", epoch),
         ])
     })
