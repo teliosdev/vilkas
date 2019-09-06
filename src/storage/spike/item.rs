@@ -15,10 +15,11 @@ impl ItemStore for SpikeStorage {
 
     fn find_items<Items>(&self, part: &str, items: Items) -> Result<Vec<Option<Item>>, Error>
     where
-        Items: Iterator<Item = Uuid>,
+        Items: IntoIterator<Item = Uuid>,
     {
         let bins = Bins::Some(vec!["data".into()]);
         let keys = items
+            .into_iter()
             .map(|key| self.keys.item_key(part, key))
             .map(|key| BatchRead::new(key, &bins))
             .collect();
@@ -65,12 +66,35 @@ impl ItemStore for SpikeStorage {
             .unwrap_or_default())
     }
 
+    fn find_items_recent(&self, part: &str) -> Result<ItemList, Error> {
+        let key = self.keys.item_recent_key(part);
+        Ok(self
+            .get(&key, ["list", "nmods", "epoch"])?
+            .as_ref()
+            .map(recent_item_list)
+            .unwrap_or_default())
+    }
+
     fn items_insert(&self, item: &Item) -> Result<(), Error> {
         let key = self.keys.item_key(&item.part, item.id);
         let data = bincode::serialize(&item)?;
         let bins = [Bin::new("data", data.into())];
         self.client
             .put(&Default::default(), &key, &bins)
+            .map_err(SyncFailure::new)?;
+        insert_recent_item(
+            &self.client,
+            &self.keys.item_recent_key(&item.part),
+            item.id,
+            self.list_recent_length,
+        )?;
+        Ok(())
+    }
+
+    fn items_delete(&self, part: &str, item: Uuid) -> Result<(), Error> {
+        let key = self.keys.item_key(part, item);
+        self.client
+            .delete(&Default::default(), &key)
             .map_err(SyncFailure::new)?;
         Ok(())
     }
@@ -83,7 +107,7 @@ impl ItemStore for SpikeStorage {
         if nmods < self.near_decay.max_modifications {
             return Ok(());
         }
-        item_list_decay(&self, &key, |_, list| self.near_decay.decay(list))
+        item_list_decay(&self, &key, |list| self.near_decay.decay(list))
     }
 
     fn items_add_bulk_near<Inner, Bulk>(&self, part: &str, bulk: Bulk) -> Result<(), Error>
@@ -95,7 +119,7 @@ impl ItemStore for SpikeStorage {
             let key = self.keys.item_near_key(part, item);
             let nmods = increment_item_list_map_bulk(&self.client, &key, nears.into_iter(), 1.0)?;
             if nmods >= self.near_decay.max_modifications {
-                item_list_decay(&self, &key, |_, list| self.near_decay.decay(list))?;
+                item_list_decay(&self, &key, |list| self.near_decay.decay(list))?;
             }
         }
 
@@ -120,7 +144,6 @@ impl ItemStore for SpikeStorage {
     fn items_list_flush(&self, part: &str) -> Result<(), Error> {
         let top_keys = TimeScope::variants().map(|s| (self.keys.item_top_key(part, s), s));
         let pop_keys = TimeScope::variants().map(|s| (self.keys.item_pop_key(part, s), s));
-        let current = millis_epoch();
         for (key, scope) in top_keys {
             let record = self.get(&key, ["nmods"])?;
             let nmods = record
@@ -129,7 +152,7 @@ impl ItemStore for SpikeStorage {
                 .and_then(|v| v.as_u64())
                 .unwrap_or_default();
             if nmods > self.top_decay.max_modifications {
-                item_list_decay(&self, &key, |epoch, list| self.top_decay.decay(scope, list))?;
+                item_list_decay(&self, &key, |list| self.top_decay.decay(scope, list))?;
             }
         }
 
@@ -146,6 +169,28 @@ impl ItemStore for SpikeStorage {
         }
 
         Ok(())
+    }
+}
+
+fn recent_item_list(record: &Record) -> ItemList {
+    let items = record
+        .bins
+        .get("list")
+        .and_then(|list| list.as_list())
+        .map(|array| {
+            array
+                .iter()
+                .flat_map(Value::as_str)
+                .flat_map(|key| key.parse::<Uuid>().ok())
+                .map(|u| (u, 1.0))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    ItemList {
+        items,
+        nmods: 0,
+        epoch: 0,
     }
 }
 
@@ -173,7 +218,7 @@ fn build_item_list(record: &Record) -> ItemList {
         .bins
         .get("epoch")
         .and_then(|v| v.as_blob())
-        .and_then(|data| LittleEndian::read_u128(data))
+        .map(|data| LittleEndian::read_u128(data))
         .unwrap_or(0u128);
 
     ItemList {
@@ -181,6 +226,19 @@ fn build_item_list(record: &Record) -> ItemList {
         nmods,
         epoch,
     }
+}
+
+fn insert_recent_item(client: &Client, key: &Key, id: Uuid, cap: u32) -> Result<(), Error> {
+    use aerospike::operations::{self as ops};
+    let value = Value::from(id.to_string());
+    let push = ops::lists::insert("list", 0, &value);
+    let trim = ops::lists::trim("list", 0, cap as i64);
+
+    client
+        .operate(&WritePolicy::default(), key, &[push, trim])
+        .map(|_| ())
+        .map_err(SyncFailure::new)
+        .map_err(Error::from)
 }
 
 fn increment_item_list_map_bulk<Ids>(
@@ -259,13 +317,14 @@ where
             .into_iter()
             .map(|(k, v)| (Value::from(k.to_string()), Value::from(v)))
             .collect::<HashMap<_, _>>();
-        let mut epoch = [0u8; 16];
-        LittleEndian::write_u128(&mut epoch, list.epoch);
+        let mut epoch = vec![0u8; 16];
+        LittleEndian::write_u128(&mut epoch[..], list.epoch);
+        let epoch = Value::Blob(epoch);
 
         Ok(vec![
             Bin::new("list", items.into()),
             Bin::new("nmods", 0.into()),
-            Bin::new("epoch", epoch.into()),
+            Bin::new("epoch", epoch),
         ])
     })
 }

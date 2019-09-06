@@ -1,7 +1,7 @@
 use aerospike::Key;
 use uuid::Uuid;
 
-use super::super::items::TimeScope;
+use crate::storage::TimeScope;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -53,6 +53,14 @@ impl Keys {
             &self.item_namespace[..],
             "items:lists",
             format!("pop:{}:{}", part, scope)
+        )
+    }
+
+    pub(super) fn item_recent_key(&self, part: &str) -> Key {
+        as_key!(
+            &self.item_namespace[..],
+            "item:lists",
+            format!("recent:{}", part)
         )
     }
 

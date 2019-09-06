@@ -4,31 +4,40 @@ require "pp"
 
 class Vilkas
   include HTTParty
-  base_uri "localhost:3000"
+  base_uri "vilkas.vei.sh:3000"
 
   def create_item(body)
-    self.class.post("/api/items", body: body.to_json, headers: { "Content-Type" => "application/json" })
+    assert_valid_response(self.class.post("/api/items", body: body.to_json, headers: { "Content-Type" => "application/json" }))
   end
 
   def item(part, id)
-    self.class.get("/api/items", query: { part: part, id: id })
+    assert_valid_response(self.class.get("/api/items", query: { part: part, id: id }))
   end
 
   def view(part, id, user, activity)
-    self.class.get("/api/view", query: { p: part, i: id, u: user, a: activity })
+    assert_valid_response(self.class.get("/api/view", query: { p: part, i: id, u: user, a: activity }))
   end
 
   def recommend(part:, user:, current:, whitelist: nil, count: 16)
     body = { part: part, user: user, current: current, whitelist: whitelist, count: count}.to_json
-    self.class.post("/api/recommend", body: body, headers: { "Content-Type": "application/json"})
+    assert_valid_response(self.class.post("/api/recommend", body: body, headers: { "Content-Type": "application/json"}))
   end
 
   def train(part:)
-    self.class.post("/api/model/#{part}/train")
+    assert_valid_response(self.class.post("/api/model/#{part}/train"))
   end
 
   def get_model(part:)
-    self.class.get("/api/model/#{part}")
+    assert_valid_response(self.class.get("/api/model/#{part}"))
+  end
+
+  private def assert_valid_response(response)
+    if response.code >= 300
+      pp response
+      fail
+    else
+      response
+    end
   end
 end
 

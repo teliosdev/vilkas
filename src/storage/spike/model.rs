@@ -1,11 +1,11 @@
 use super::ext::RecordExt;
+use super::ext::{ResultExt, ValueExt};
 use super::ModelStore;
 use super::SpikeStorage;
-use crate::storage::models::Activity;
-use crate::storage::spike::ext::{ResultExt, ValueExt};
+use crate::storage::Activity;
 use crate::storage::FeatureList;
 use aerospike::{
-    BatchPolicy, BatchRead, Bin, Client, Expiration, Key, ReadPolicy, Value, WritePolicy,
+    BatchPolicy, BatchRead, Bin, Bins, Client, Expiration, Key, ReadPolicy, Value, WritePolicy,
 };
 use failure::{Error, SyncFailure};
 use uuid::Uuid;
@@ -98,7 +98,8 @@ impl ModelStore for SpikeStorage {
         let result = self
             .client
             .get(&ReadPolicy::default(), &default_key, ["list"])
-            .optional()?;
+            .optional()
+            .map_err(SyncFailure::new)?;
         let bins = Bins::from(["data"]);
         let list = result.as_ref().and_then(|r| r.bins.get("list"));
         let list = list.and_then(|v| v.as_list());
@@ -123,8 +124,13 @@ impl ModelStore for SpikeStorage {
                 }
             })
             .collect::<Vec<_>>();
-        self.client.delete(&WritePolicy::default(), &default_key)?;
-        let result = self.client.batch_get(&BatchPolicy::default(), items)?;
+        self.client
+            .delete(&WritePolicy::default(), &default_key)
+            .map_err(SyncFailure::new)?;
+        let result = self
+            .client
+            .batch_get(&BatchPolicy::default(), items)
+            .map_err(SyncFailure::new)?;
 
         let result = result
             .into_iter()
@@ -140,15 +146,17 @@ impl ModelStore for SpikeStorage {
         Ok(result)
     }
 
-    fn model_activity_delete_all<Ids>(&self, id: Ids) -> Result<(), Error>
+    fn model_activity_delete_all<'p, Ids>(&self, id: Ids) -> Result<(), Error>
     where
-        Ids: IntoIterator<Item = (&'_ str, Uuid)>,
+        Ids: IntoIterator<Item = (&'p str, Uuid)>,
     {
-        let keys = ids
+        let keys = id
             .into_iter()
             .map(|(part, id)| self.keys.activity_key(part, id));
         for key in keys {
-            self.client.delete(&WritePolicy::default(), key)?;
+            self.client
+                .delete(&WritePolicy::default(), &key)
+                .map_err(SyncFailure::new)?;
         }
         Ok(())
     }

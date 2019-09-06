@@ -1,4 +1,4 @@
-pub use self::core::items::{Item, ItemList, ItemStore, TimeScope};
+pub use self::core::items::{Item, ItemList, ItemListDecay, ItemStore, NearListDecay, TimeScope};
 pub use self::core::models::{Activity, BasicExample, Example, FeatureList, ModelStore};
 pub use self::core::users::{UserData, UserStore};
 use self::sealed::Sealed;

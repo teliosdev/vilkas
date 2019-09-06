@@ -1,6 +1,6 @@
 use self::ext::ResultExt;
 use self::keys::Keys;
-use super::items::{ItemListDecay, NearListDecay};
+use super::{ItemListDecay, NearListDecay};
 use super::{ModelStore, Sealed, Store};
 use aerospike::errors::{Error as AerospikeError, ErrorKind as AerospikeErrorKind};
 use aerospike::{
@@ -24,6 +24,7 @@ pub struct SpikeStorage {
     long_activity_lifetime: u32,
     list_activity_lifetime: u32,
     list_activity_length: u32,
+    list_recent_length: u32,
     near_decay: NearListDecay,
     top_decay: ItemListDecay,
     pop_decay: ItemListDecay,
@@ -57,6 +58,8 @@ struct SpikeStorageConfiguration {
     list_activity_lifetime: u32,
     #[serde(default = "defaults::list_activity_length")]
     list_activity_length: u32,
+    #[serde(default = "defaults::list_recent_length")]
+    list_recent_length: u32,
 }
 
 mod defaults {
@@ -85,6 +88,10 @@ mod defaults {
     pub const fn list_activity_length() -> u32 {
         256
     }
+
+    pub const fn list_recent_length() -> u32 {
+        256
+    }
 }
 
 impl Into<SpikeStorage> for SpikeStorageConfiguration {
@@ -106,6 +113,7 @@ impl Into<SpikeStorage> for SpikeStorageConfiguration {
             long_activity_lifetime: self.long_activity_lifetime,
             list_activity_lifetime: self.list_activity_lifetime,
             list_activity_length: self.list_activity_length,
+            list_recent_length: self.list_recent_length,
             near_decay: self.near_decay,
             top_decay: self.top_decay,
             pop_decay: self.pop_decay,
