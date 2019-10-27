@@ -12,7 +12,7 @@ pub struct Request {
     #[serde(alias = "u")]
     pub user: String,
     #[serde(alias = "t")]
-    pub current: Uuid,
+    pub current: Option<Uuid>,
     #[serde(alias = "w")]
     pub whitelist: Option<Vec<Uuid>>,
     #[serde(alias = "c")]
@@ -21,16 +21,19 @@ pub struct Request {
 
 impl Request {
     pub fn current<T: Store + 'static>(&self, core: &Core<T>) -> Result<Item, Error> {
-        core.storage
-            .find_item(&self.part, self.current)
-            .map(|item| {
-                item.unwrap_or_else(|| Item {
-                    id: self.current,
-                    part: self.part.clone(),
-                    views: 1,
-                    meta: Default::default(),
-                })
-            })
+        let item = self
+            .current
+            .map(|id| core.storage.find_item(&self.part, id))
+            .transpose()?
+            .and_then(core::convert::identity)
+            .unwrap_or_else(|| Item {
+                id: Uuid::nil(),
+                part: self.part.clone(),
+                views: 1,
+                meta: Default::default(),
+            });
+
+        Ok(item)
     }
 
     pub fn examples<'t, T: Store + 'static>(
@@ -67,7 +70,11 @@ impl Request {
         let mut candidate_list = CandidateList::new(max * 2);
 
         let storage = core.storage.clone();
-        let list = storage.find_items_near(&self.part, self.current)?;
+        let list = if let Some(id) = self.current {
+            storage.find_items_near(&self.part, id)?
+        } else {
+            Default::default()
+        };
         for (i, (id, value)) in list.items.iter().cloned().enumerate() {
             candidate_list.mutate(id, |ex| {
                 ex.with_near((value, i as f64));

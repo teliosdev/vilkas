@@ -56,8 +56,8 @@ impl<T: Store + 'static> Core<T> {
     }
 
     pub fn recommend(&self, request: &Request) -> Result<Response, Error> {
-        let current = request.current(self)?;
-        let current = Example::new(BasicExample::new(current.id), current);
+        let current_item = request.current(self)?;
+        let current = Example::new(BasicExample::new(current_item.id), current_item);
         let config = self.config_for(&request.part);
         let model = pluck_model(self.storage.as_ref(), &request.part)?;
         let examples = request.examples(self)?;
