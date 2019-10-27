@@ -7,6 +7,7 @@ use serde_json::json;
 
 pub fn apply(request: &Request, context: &Context<impl Store>) -> Result<Response, Error> {
     let request: RecommendRequest = rouille::input::json_input(request)?;
+    debug!("request={:?}", request);
     let response = context.core.recommend(&request)?;
     Ok(Response::json(&json!({ "result": response })))
 }

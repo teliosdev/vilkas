@@ -57,16 +57,23 @@ impl<T: Store + 'static> Core<T> {
 
     pub fn recommend(&self, request: &Request) -> Result<Response, Error> {
         let current_item = request.current(self)?;
+        debug!("current_item={:?}", current_item);
         let current = Example::new(BasicExample::new(current_item.id), current_item);
         let config = self.config_for(&request.part);
+        debug!("config={:?}", config);
         let model = pluck_model(self.storage.as_ref(), &request.part)?;
+        debug!("model={:?}", model);
         let examples = request.examples(self)?;
+        debug!("examples=impl");
         let mut scored = score_examples(examples, &current, &model, config).collect::<Vec<_>>();
+        debug!("scored={:?}", scored);
         crate::ord::sort_float(&mut scored, |(_, a)| *a);
         resort_examples(&mut scored, request.count, config);
         scored.truncate(request.count);
+        debug!("scored.truncate");
 
         let id = build_activity(self.storage.as_ref(), request, current, &scored[..])?;
+        debug!("id={:?}", id);
 
         Ok(Response {
             items: scored.into_iter().map(|(v, s)| (v.item.id, s)).collect(),
